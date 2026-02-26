@@ -95,16 +95,19 @@ async def ws_terminal(
 
         async with asyncssh.connect(**connect_kwargs) as conn:
             process = await conn.create_process(
-                "bash",
                 term_type="xterm-256color",
                 term_size=(80, 24),
+                encoding=None,
             )
 
             async def ssh_to_ws():
                 """Read SSH stdout and send to WebSocket."""
                 try:
                     async for data in process.stdout:
-                        await websocket.send_text(data)
+                        if isinstance(data, bytes):
+                            await websocket.send_text(data.decode("utf-8", errors="replace"))
+                        else:
+                            await websocket.send_text(data)
                 except (asyncssh.BreakReceived, asyncssh.SignalReceived):
                     pass
                 except Exception:
@@ -127,7 +130,7 @@ async def ws_terminal(
                                     continue
                             except json.JSONDecodeError:
                                 pass
-                        process.stdin.write(data)
+                        process.stdin.write(data.encode("utf-8"))
                 except WebSocketDisconnect:
                     pass
                 except Exception:

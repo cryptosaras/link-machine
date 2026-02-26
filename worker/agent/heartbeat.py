@@ -13,8 +13,9 @@ async def heartbeat_loop(config):
                 stats = {
                     "hostname": platform.node(),
                 }
+                base = config.CONTROL_SERVER_URL.rstrip("/")
                 resp = await client.post(
-                    f"{config.CONTROL_SERVER_URL}/api/worker-agent/heartbeat",
+                    f"{base}/api/worker-agent/heartbeat",
                     json={"system_stats": stats, "code_hash": AGENT_CODE_HASH},
                     headers={"Authorization": f"Bearer {config.WORKER_API_KEY}"},
                     timeout=10,
