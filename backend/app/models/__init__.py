@@ -2,5 +2,6 @@ from app.models.user import User
 from app.models.website import Website
 from app.models.worker import Worker
 from app.models.setting import Setting
+from app.models.task import Task, ScrapedLink
 
-__all__ = ["User", "Website", "Worker", "Setting"]
+__all__ = ["User", "Website", "Worker", "Setting", "Task", "ScrapedLink"]

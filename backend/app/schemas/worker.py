@@ -38,7 +38,9 @@ class BatchUpdateRequest(BaseModel):
 class HeartbeatRequest(BaseModel):
     system_stats: dict = {}
     code_hash: str | None = None
+    current_task_id: str | None = None
 
 
 class HeartbeatResponse(BaseModel):
     status: str
+    assigned_task: dict | None = None

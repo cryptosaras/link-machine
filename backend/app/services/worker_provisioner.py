@@ -35,7 +35,15 @@ def build_provision_script(control_server_url: str, worker_api_key: str) -> str:
         "agent/config.py": _read_worker_file("agent/config.py"),
         "agent/heartbeat.py": _read_worker_file("agent/heartbeat.py"),
         "agent/main.py": _read_worker_file("agent/main.py"),
+        "agent/task_runner.py": _read_worker_file("agent/task_runner.py"),
     }
+    plugin_files = {}
+    plugins_dir = WORKER_SOURCE_DIR / "plugins"
+    if plugins_dir.exists():
+        for f in plugins_dir.iterdir():
+            if f.suffix == ".py":
+                plugin_files[f"plugins/{f.name}"] = f.read_text(encoding="utf-8")
+
     requirements = _read_worker_file("requirements.txt")
     dockerfile = _read_worker_file("Dockerfile")
 
@@ -44,6 +52,11 @@ def build_provision_script(control_server_url: str, worker_api_key: str) -> str:
     for rel_path, content in agent_files.items():
         encoded = _encode_file(content)
         file_writes += f'echo "{encoded}" | base64 -d > /opt/link-machine-worker/{rel_path}\n'
+
+    plugin_writes = ""
+    for rel_path, content in plugin_files.items():
+        encoded = _encode_file(content)
+        plugin_writes += f'echo "{encoded}" | base64 -d > /opt/link-machine-worker/{rel_path}\n'
 
     encoded_requirements = _encode_file(requirements)
     encoded_dockerfile = _encode_file(dockerfile)
@@ -84,6 +97,7 @@ fi
 
 echo "=== Creating worker directory ==="
 mkdir -p /opt/link-machine-worker/agent
+mkdir -p /opt/link-machine-worker/plugins
 
 echo "=== Writing worker configuration ==="
 cat > /opt/link-machine-worker/.env << 'ENVEOF'
@@ -95,6 +109,8 @@ ENVEOF
 echo "=== Writing worker agent code ==="
 echo "{encoded_requirements}" | base64 -d > /opt/link-machine-worker/requirements.txt
 {file_writes}
+echo "=== Writing plugin code ==="
+{plugin_writes}
 echo "{encoded_dockerfile}" | base64 -d > /opt/link-machine-worker/Dockerfile
 
 cat > /opt/link-machine-worker/docker-compose.yml << 'DCEOF'

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Globe, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Globe, Plus, Search, Trash2 } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,14 @@ export default function WebsiteList() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const [scrapeOpen, setScrapeOpen] = useState(false);
+  const [scrapeWebsite, setScrapeWebsite] = useState<Website | null>(null);
+  const [scrapeDepth, setScrapeDepth] = useState("0");
+  const [scrapeMaxPages, setScrapeMaxPages] = useState("10000");
+  const [scrapeConcurrent, setScrapeConcurrent] = useState("30");
+  const [scrapeUseSitemap, setScrapeUseSitemap] = useState(false);
+  const [scrapeLoading, setScrapeLoading] = useState(false);
 
   const fetchWebsites = async () => {
     const res = await api.get("/websites");
@@ -48,6 +57,28 @@ export default function WebsiteList() {
       fetchWebsites();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleScrape = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scrapeWebsite) return;
+    setScrapeLoading(true);
+    try {
+      await api.post("/tasks", {
+        website_id: scrapeWebsite.id,
+        task_type: "scrape_links",
+        params: {
+          depth: parseInt(scrapeDepth),
+          max_pages: parseInt(scrapeMaxPages),
+          concurrent: parseInt(scrapeConcurrent),
+          use_sitemap: scrapeUseSitemap,
+        },
+      });
+      setScrapeOpen(false);
+      navigate("/tasks");
+    } finally {
+      setScrapeLoading(false);
     }
   };
 
@@ -129,6 +160,17 @@ export default function WebsiteList() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => {
+                        setScrapeWebsite(site);
+                        setScrapeOpen(true);
+                      }}
+                      title="Scrape Links"
+                    >
+                      <Search className="h-4 w-4 text-foreground-muted hover:text-emerald-400" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleDelete(site.id)}
                       title="Delete"
                     >
@@ -141,6 +183,63 @@ export default function WebsiteList() {
           </table>
         </div>
       )}
+
+      <Dialog open={scrapeOpen} onOpenChange={setScrapeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Scrape Links</DialogTitle>
+            <DialogDescription>
+              Configure scraping for {scrapeWebsite?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleScrape} className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="scrape-depth">Max Depth (0 = unlimited)</Label>
+              <Input
+                id="scrape-depth"
+                type="number"
+                value={scrapeDepth}
+                onChange={(e) => setScrapeDepth(e.target.value)}
+                min="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scrape-max-pages">Max Pages</Label>
+              <Input
+                id="scrape-max-pages"
+                type="number"
+                value={scrapeMaxPages}
+                onChange={(e) => setScrapeMaxPages(e.target.value)}
+                min="1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scrape-concurrent">Concurrent Workers</Label>
+              <Input
+                id="scrape-concurrent"
+                type="number"
+                value={scrapeConcurrent}
+                onChange={(e) => setScrapeConcurrent(e.target.value)}
+                min="1"
+                max="100"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="scrape-sitemap"
+                type="checkbox"
+                checked={scrapeUseSitemap}
+                onChange={(e) => setScrapeUseSitemap(e.target.checked)}
+                className="rounded border-[var(--border)]"
+              />
+              <Label htmlFor="scrape-sitemap">Start from sitemap URL</Label>
+            </div>
+            <Button type="submit" className="w-full" disabled={scrapeLoading}>
+              {scrapeLoading ? "Creating task..." : "Start Scraping"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

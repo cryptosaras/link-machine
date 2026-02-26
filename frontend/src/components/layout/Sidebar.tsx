@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Globe, LayoutDashboard, Moon, Server, Settings, Sun } from "lucide-react";
+import { Globe, LayoutDashboard, ListTodo, Moon, Server, Settings, Sun } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/websites", icon: Globe, label: "Websites" },
+  { to: "/tasks", icon: ListTodo, label: "Tasks" },
   { to: "/workers", icon: Server, label: "Workers" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

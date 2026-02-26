@@ -1,10 +1,16 @@
+import json
 from datetime import datetime, timezone
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Header
+from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
+from app.models.task import ScrapedLink, Task
+from app.models.website import Website
 from app.models.worker import Worker
 from app.schemas.worker import HeartbeatRequest, HeartbeatResponse
 from app.services.worker_version import EXPECTED_WORKER_HASH
@@ -34,5 +40,142 @@ async def heartbeat(
         bool(EXPECTED_WORKER_HASH) and body.code_hash != EXPECTED_WORKER_HASH
         if body.code_hash else bool(EXPECTED_WORKER_HASH)
     )
+
+    assigned_task = None
+
+    if body.current_task_id is None:
+        task_result = await db.execute(
+            select(Task)
+            .where(Task.status == "pending")
+            .order_by(Task.created_at)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        task = task_result.scalar_one_or_none()
+        if task:
+            task.status = "running"
+            task.worker_id = worker.id
+            task.started_at = datetime.now(timezone.utc)
+
+            website_url = None
+            website_sitemap_url = None
+            if task.website_id:
+                website = await db.get(Website, task.website_id)
+                if website:
+                    website_url = website.url
+                    website_sitemap_url = website.sitemap_url
+
+            assigned_task = {
+                "id": str(task.id),
+                "task_type": task.task_type,
+                "params": task.params,
+                "website_url": website_url,
+                "website_sitemap_url": website_sitemap_url,
+            }
+
     await db.commit()
-    return HeartbeatResponse(status="ok")
+    return HeartbeatResponse(status="ok", assigned_task=assigned_task)
+
+
+# --------------- Pydantic models for new endpoints ---------------
+
+class TaskProgressReport(PydanticBaseModel):
+    task_id: str
+    progress: dict
+
+
+class TaskCompleteReport(PydanticBaseModel):
+    task_id: str
+    status: str
+    result_summary: dict | None = None
+    error_message: str | None = None
+
+
+class ScrapedLinksUpload(PydanticBaseModel):
+    task_id: str
+    urls: list[str]
+
+
+# --------------- Helper ---------------
+
+async def _get_worker_by_auth(authorization: str, db: AsyncSession) -> Worker:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    api_key = authorization[7:]
+    result = await db.execute(select(Worker).where(Worker.api_key == api_key))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return worker
+
+
+# --------------- New endpoints ---------------
+
+@router.post("/task-progress")
+async def report_task_progress(
+    body: TaskProgressReport,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    worker = await _get_worker_by_auth(authorization, db)
+    task = await db.get(Task, body.task_id)
+    if not task or task.worker_id != worker.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.progress = body.progress
+    await db.commit()
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    await r.publish(f"task:{task.id}", json.dumps({"type": "progress", "progress": body.progress}))
+    await r.aclose()
+
+    return {"status": "ok"}
+
+
+@router.post("/task-complete")
+async def report_task_complete(
+    body: TaskCompleteReport,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    worker = await _get_worker_by_auth(authorization, db)
+    task = await db.get(Task, body.task_id)
+    if not task or task.worker_id != worker.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.status = body.status
+    task.result_summary = body.result_summary
+    task.error_message = body.error_message
+    task.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    await r.publish(f"task:{task.id}", json.dumps({
+        "type": "complete",
+        "status": body.status,
+        "result_summary": body.result_summary,
+        "error_message": body.error_message,
+    }))
+    await r.aclose()
+
+    return {"status": "ok"}
+
+
+@router.post("/task-links")
+async def upload_scraped_links(
+    body: ScrapedLinksUpload,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    worker = await _get_worker_by_auth(authorization, db)
+    task = await db.get(Task, body.task_id)
+    if not task or task.worker_id != worker.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    for url in body.urls:
+        db.add(ScrapedLink(
+            website_id=task.website_id,
+            task_id=task.id,
+            url=url,
+        ))
+    await db.commit()
+    return {"status": "ok", "count": len(body.urls)}

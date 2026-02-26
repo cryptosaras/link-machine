@@ -156,3 +156,34 @@ async def ws_terminal(
             await websocket.send_text(f"\r\nError: {e}\r\n")
         except Exception:
             pass
+
+
+@router.websocket("/ws/task/{task_id}")
+async def ws_task_progress(
+    websocket: WebSocket,
+    task_id: str,
+    token: str = Query(...),
+):
+    if not _validate_token(token):
+        await websocket.close(code=4001)
+        return
+
+    await websocket.accept()
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    pubsub = r.pubsub()
+    await pubsub.subscribe(f"task:{task_id}")
+
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                data = message["data"].decode()
+                await websocket.send_text(data)
+                parsed = json.loads(data)
+                if parsed.get("type") == "complete":
+                    break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await pubsub.unsubscribe(f"task:{task_id}")
+        await r.aclose()
