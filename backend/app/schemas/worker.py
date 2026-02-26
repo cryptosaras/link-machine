@@ -1,0 +1,37 @@
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class WorkerCreate(BaseModel):
+    name: str
+    ssh_host: str
+    ssh_user: str = "root"
+    ssh_port: int = 22
+    ssh_password: str | None = None
+    ssh_key: str | None = None
+
+
+class WorkerResponse(BaseModel):
+    id: str
+    name: str
+    ssh_host: str
+    ssh_user: str
+    ssh_port: int
+    status: str
+    last_heartbeat: datetime | None
+    system_stats: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkerCreateResponse(WorkerResponse):
+    api_key: str
+
+
+class HeartbeatRequest(BaseModel):
+    system_stats: dict = {}
+
+
+class HeartbeatResponse(BaseModel):
+    status: str

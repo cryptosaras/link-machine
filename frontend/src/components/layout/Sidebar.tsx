@@ -1,9 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Globe, LayoutDashboard } from "lucide-react";
+import { Globe, LayoutDashboard, Server, Settings } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/websites", icon: Globe, label: "Websites" },
+  { to: "/workers", icon: Server, label: "Workers" },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function Sidebar() {

@@ -4,6 +4,8 @@ import { useAuthStore } from "@/stores/authStore";
 import MainLayout from "@/components/layout/MainLayout";
 import Login from "@/pages/Login";
 import WebsiteList from "@/pages/websites/WebsiteList";
+import WorkerList from "@/pages/workers/WorkerList";
+import SettingsPage from "@/pages/Settings";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -42,6 +44,8 @@ export default function App() {
       >
         <Route index element={<WebsiteList />} />
         <Route path="/websites" element={<WebsiteList />} />
+        <Route path="/workers" element={<WorkerList />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

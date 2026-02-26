@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.router import router as auth_router
 from app.routers.websites import router as websites_router
+from app.routers.workers import router as workers_router
+from app.routers.worker_agent import router as worker_agent_router
+from app.routers.settings import router as settings_router
+from app.routers.ws import router as ws_router
 
 
 def create_app() -> FastAPI:
@@ -18,6 +22,10 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(websites_router)
+    app.include_router(workers_router)
+    app.include_router(worker_agent_router)
+    app.include_router(settings_router)
+    app.include_router(ws_router)
 
     @app.get("/api/health")
     async def health():
