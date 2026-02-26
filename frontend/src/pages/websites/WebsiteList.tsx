@@ -59,7 +59,7 @@ export default function WebsiteList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Websites</h1>
+        <h1 className="text-2xl font-bold text-foreground">Websites</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -102,27 +102,27 @@ export default function WebsiteList() {
       </div>
 
       {websites.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-800 bg-gray-900 py-16">
-          <Globe className="mb-4 h-12 w-12 text-gray-600" />
-          <p className="text-gray-400">No websites yet. Add your first website to get started.</p>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-surface-secondary py-16">
+          <Globe className="mb-4 h-12 w-12 text-foreground-muted" />
+          <p className="text-foreground-secondary">No websites yet. Add your first website to get started.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-800">
+        <div className="overflow-hidden rounded-lg border border-[var(--border)]">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-800 bg-gray-900">
+            <thead className="border-b border-[var(--border)] bg-surface-secondary">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">Name</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">URL</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">Added</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-400">Actions</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Name</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">URL</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Added</th>
+                <th className="px-4 py-3 text-right font-medium text-foreground-secondary">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-[var(--border)]">
               {websites.map((site) => (
-                <tr key={site.id} className="bg-gray-950 hover:bg-gray-900">
-                  <td className="px-4 py-3 font-medium text-white">{site.name}</td>
-                  <td className="px-4 py-3 text-gray-300">{site.url}</td>
-                  <td className="px-4 py-3 text-gray-400">
+                <tr key={site.id} className="bg-surface hover:bg-surface-tertiary">
+                  <td className="px-4 py-3 font-medium text-foreground">{site.name}</td>
+                  <td className="px-4 py-3 text-foreground-secondary">{site.url}</td>
+                  <td className="px-4 py-3 text-foreground-muted">
                     {new Date(site.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -132,7 +132,7 @@ export default function WebsiteList() {
                       onClick={() => handleDelete(site.id)}
                       title="Delete"
                     >
-                      <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-400" />
+                      <Trash2 className="h-4 w-4 text-foreground-muted hover:text-red-400" />
                     </Button>
                   </td>
                 </tr>

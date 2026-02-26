@@ -60,13 +60,13 @@ function VersionBadge({
   codeHash: string | null;
   needsUpdate: boolean;
 }) {
-  if (!codeHash) return <span className="text-gray-600 text-xs">n/a</span>;
+  if (!codeHash) return <span className="text-foreground-muted text-xs">n/a</span>;
   return (
     <span
       className={`inline-block rounded px-1.5 py-0.5 text-xs font-mono ${
         needsUpdate
-          ? "bg-orange-900 text-orange-300"
-          : "bg-green-900 text-green-300"
+          ? "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300"
+          : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
       }`}
     >
       {codeHash}
@@ -158,9 +158,11 @@ export default function WorkerList() {
       fontSize: 13,
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
       theme: {
-        background: "#0a0a0a",
-        foreground: "#e5e5e5",
-        cursor: "#e5e5e5",
+        background: "#0d0d0d",
+        foreground: "#d4d4d8",
+        cursor: "#10b981",
+        cursorAccent: "#0d0d0d",
+        selectionBackground: "#10b98133",
       },
     });
     const fitAddon = new FitAddon();
@@ -371,13 +373,13 @@ export default function WorkerList() {
     <div className="space-y-6">
       {/* API Key display after creation */}
       {createdApiKey && (
-        <div className="rounded-lg border border-yellow-700 bg-yellow-950 p-4">
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-yellow-700 dark:bg-yellow-950">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-yellow-200">
+              <p className="text-sm font-medium text-amber-800 dark:text-yellow-200">
                 Worker API Key (shown once, save it if needed):
               </p>
-              <code className="mt-1 block text-xs text-yellow-300">
+              <code className="mt-1 block text-xs text-amber-700 dark:text-yellow-300">
                 {createdApiKey}
               </code>
             </div>
@@ -386,7 +388,7 @@ export default function WorkerList() {
               size="icon"
               onClick={() => setCreatedApiKey(null)}
             >
-              <X className="h-4 w-4 text-yellow-400" />
+              <X className="h-4 w-4 text-amber-600 dark:text-yellow-400" />
             </Button>
           </div>
         </div>
@@ -394,9 +396,9 @@ export default function WorkerList() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-white">Workers</h1>
+          <h1 className="text-2xl font-bold text-foreground">Workers</h1>
           {outdatedCount > 0 && (
-            <span className="rounded-full bg-orange-900 px-2.5 py-0.5 text-xs font-medium text-orange-300">
+            <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900 dark:text-orange-300">
               {outdatedCount} outdated
             </span>
           )}
@@ -479,8 +481,8 @@ export default function WorkerList() {
                       onClick={() => setFormAuthType("password")}
                       className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                         formAuthType === "password"
-                          ? "bg-white text-gray-900"
-                          : "bg-gray-800 text-gray-400 hover:text-white"
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
                       }`}
                     >
                       Password
@@ -490,8 +492,8 @@ export default function WorkerList() {
                       onClick={() => setFormAuthType("key")}
                       className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                         formAuthType === "key"
-                          ? "bg-white text-gray-900"
-                          : "bg-gray-800 text-gray-400 hover:text-white"
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
                       }`}
                     >
                       SSH Key
@@ -521,7 +523,7 @@ export default function WorkerList() {
                       placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
                       required
                       rows={5}
-                      className="flex w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-300 font-mono"
+                      className="flex w-full rounded-md border border-[var(--border)] bg-surface-secondary px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] font-mono"
                     />
                   </div>
                 )}
@@ -537,61 +539,61 @@ export default function WorkerList() {
 
       {/* Workers table */}
       {workers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-800 bg-gray-900 py-16">
-          <Server className="mb-4 h-12 w-12 text-gray-600" />
-          <p className="text-gray-400">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-[var(--border)] bg-surface-secondary py-16">
+          <Server className="mb-4 h-12 w-12 text-foreground-muted" />
+          <p className="text-foreground-secondary">
             No workers yet. Add your first worker to get started.
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-800">
+        <div className="overflow-hidden rounded-lg border border-[var(--border)]">
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-800 bg-gray-900">
+            <thead className="border-b border-[var(--border)] bg-surface-secondary">
               <tr>
                 <th className="w-10 px-3 py-3" />
-                <th className="px-4 py-3 text-left font-medium text-gray-400">
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Name
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Host
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Version
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-gray-400">
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Last Heartbeat
                 </th>
-                <th className="px-4 py-3 text-right font-medium text-gray-400">
+                <th className="px-4 py-3 text-right font-medium text-foreground-secondary">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-[var(--border)]">
               {workers.map((w) => (
-                <tr key={w.id} className="bg-gray-950 hover:bg-gray-900">
+                <tr key={w.id} className="bg-surface hover:bg-surface-tertiary">
                   <td className="px-3 py-3">
                     {w.needs_update && (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(w.id)}
                         onChange={() => toggleSelect(w.id)}
-                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-white accent-white"
+                        className="h-4 w-4 rounded accent-accent"
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3 font-medium text-white">
+                  <td className="px-4 py-3 font-medium text-foreground">
                     {w.name}
                   </td>
-                  <td className="px-4 py-3 text-gray-300">
+                  <td className="px-4 py-3 text-foreground-secondary">
                     {w.ssh_user}@{w.ssh_host}:{w.ssh_port}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <StatusDot status={w.status} />
-                      <span className="text-gray-300 capitalize">
+                      <span className="text-foreground-secondary capitalize">
                         {w.status}
                       </span>
                     </div>
@@ -602,7 +604,7 @@ export default function WorkerList() {
                       needsUpdate={w.needs_update}
                     />
                   </td>
-                  <td className="px-4 py-3 text-gray-400">
+                  <td className="px-4 py-3 text-foreground-muted">
                     {formatTimeAgo(w.last_heartbeat)}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -630,7 +632,7 @@ export default function WorkerList() {
                         onClick={() => handleDelete(w.id)}
                         title="Delete"
                       >
-                        <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-400" />
+                        <Trash2 className="h-4 w-4 text-foreground-muted hover:text-red-400" />
                       </Button>
                     </div>
                   </td>
@@ -650,7 +652,7 @@ export default function WorkerList() {
               Live output from worker installation.
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-2 h-96 overflow-y-auto rounded-md border border-gray-700 bg-black p-4 font-mono text-xs text-green-400">
+          <div className="mt-2 h-96 overflow-y-auto rounded-md border border-[var(--border)] bg-gray-950 p-4 font-mono text-xs text-green-400">
             {logLines.map((line, i) => {
               let className = "";
               if (line.startsWith("__DONE__")) {
@@ -686,23 +688,41 @@ export default function WorkerList() {
         <div className="fixed inset-0 z-50 flex justify-end">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={closeTerminal}
           />
           {/* Drawer */}
-          <div className="relative flex h-full w-[70%] min-w-[500px] flex-col bg-gray-950 shadow-2xl">
+          <div
+            className="relative flex h-full w-[70%] min-w-[500px] flex-col border-l-2 border-emerald-500/50 shadow-2xl"
+            style={{ backgroundColor: "#111118" }}
+          >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <TerminalIcon className="h-4 w-4 text-gray-400" />
-                <span className="text-sm font-medium text-white">
-                  Terminal — {terminalWorkerName}
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{
+                background:
+                  "linear-gradient(to right, rgba(16, 185, 129, 0.12), transparent)",
+                borderBottom: "1px solid rgba(16, 185, 129, 0.25)",
+              }}
+            >
+              <div className="flex items-center gap-3">
+                {/* Traffic light dots */}
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-3 rounded-full bg-red-500/80" />
+                  <span className="inline-block h-3 w-3 rounded-full bg-yellow-500/80" />
+                  <span className="inline-block h-3 w-3 rounded-full bg-green-500/80" />
+                </div>
+                <div className="mx-2 h-4 w-px bg-gray-700" />
+                <TerminalIcon className="h-4 w-4 text-emerald-400" />
+                <span className="text-sm font-medium text-emerald-50">
+                  {terminalWorkerName}
                 </span>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={closeTerminal}
+                className="text-gray-400 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -710,8 +730,8 @@ export default function WorkerList() {
             {/* Terminal container */}
             <div
               ref={terminalRef}
-              className="flex-1 p-2"
-              style={{ backgroundColor: "#0a0a0a" }}
+              className="flex-1 p-1"
+              style={{ backgroundColor: "#0d0d0d" }}
             />
           </div>
         </div>

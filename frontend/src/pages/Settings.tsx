@@ -31,9 +31,9 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Settings</h1>
+      <h1 className="text-2xl font-bold text-foreground">Settings</h1>
 
-      <div className="max-w-lg rounded-lg border border-gray-800 bg-gray-900 p-6">
+      <div className="max-w-lg rounded-lg border border-[var(--border)] bg-surface-secondary p-6">
         <form onSubmit={handleSave} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="control-url">Control Server URL</Label>
@@ -43,7 +43,7 @@ export default function SettingsPage() {
               onChange={(e) => setControlUrl(e.target.value)}
               placeholder="http://YOUR_VPS_IP:8000"
             />
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-foreground-muted">
               The URL that worker agents use to connect back to this server.
               Include protocol and port (e.g. http://123.45.67.89:8000 or
               https://mydomain.com).

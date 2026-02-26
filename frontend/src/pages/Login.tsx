@@ -28,11 +28,11 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-950">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-gray-800 bg-gray-900 p-8">
+    <div className="flex min-h-screen items-center justify-center bg-surface">
+      <div className="w-full max-w-sm space-y-6 rounded-lg border border-[var(--border)] bg-surface-secondary p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white">Link Machine</h1>
-          <p className="mt-1 text-sm text-gray-400">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-foreground">Link Machine</h1>
+          <p className="mt-1 text-sm text-foreground-secondary">Sign in to your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

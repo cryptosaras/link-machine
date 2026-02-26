@@ -1,15 +1,53 @@
 import asyncio
-import io
+import base64
 
 import asyncssh
 import redis.asyncio as aioredis
+from pathlib import Path
 from sqlalchemy import select
 
 from app.config import settings
 from app.models.worker import Worker
 
+# Path to the canonical worker source files
+# In Docker, the worker dir is mounted at /worker-source; locally, it's beside backend/
+_docker_path = Path("/worker-source")
+_local_path = Path(__file__).parent.parent.parent.parent / "worker"
+WORKER_SOURCE_DIR = _docker_path if _docker_path.exists() else _local_path
+
+
+def _read_worker_file(relative_path: str) -> str:
+    """Read a file from the worker source directory."""
+    file_path = WORKER_SOURCE_DIR / relative_path
+    return file_path.read_text(encoding="utf-8")
+
+
+def _encode_file(content: str) -> str:
+    """Base64-encode file content for safe transfer via bash."""
+    return base64.b64encode(content.encode("utf-8")).decode("ascii")
+
 
 def build_provision_script(control_server_url: str, worker_api_key: str) -> str:
+    # Read the actual source files so deployed code matches the expected hash
+    agent_files = {
+        "agent/__init__.py": _read_worker_file("agent/__init__.py"),
+        "agent/version.py": _read_worker_file("agent/version.py"),
+        "agent/config.py": _read_worker_file("agent/config.py"),
+        "agent/heartbeat.py": _read_worker_file("agent/heartbeat.py"),
+        "agent/main.py": _read_worker_file("agent/main.py"),
+    }
+    requirements = _read_worker_file("requirements.txt")
+    dockerfile = _read_worker_file("Dockerfile")
+
+    # Build base64 write commands for each file
+    file_writes = ""
+    for rel_path, content in agent_files.items():
+        encoded = _encode_file(content)
+        file_writes += f'echo "{encoded}" | base64 -d > /opt/link-machine-worker/{rel_path}\n'
+
+    encoded_requirements = _encode_file(requirements)
+    encoded_dockerfile = _encode_file(dockerfile)
+
     return f"""#!/bin/bash
 set -e
 
@@ -55,92 +93,9 @@ HEARTBEAT_INTERVAL=30
 ENVEOF
 
 echo "=== Writing worker agent code ==="
-cat > /opt/link-machine-worker/requirements.txt << 'REQEOF'
-httpx>=0.28.0
-pydantic-settings>=2.7.0
-REQEOF
-
-cat > /opt/link-machine-worker/agent/__init__.py << 'INITEOF'
-INITEOF
-
-cat > /opt/link-machine-worker/agent/version.py << 'VEREOF'
-import hashlib
-from pathlib import Path
-
-def compute_code_hash() -> str:
-    agent_dir = Path(__file__).parent
-    source_files = sorted(agent_dir.rglob("*.py"))
-    hasher = hashlib.sha256()
-    for path in source_files:
-        relative = str(path.relative_to(agent_dir))
-        hasher.update(relative.encode())
-        hasher.update(path.read_bytes())
-    return hasher.hexdigest()[:16]
-
-AGENT_CODE_HASH = compute_code_hash()
-VEREOF
-
-cat > /opt/link-machine-worker/agent/config.py << 'CFGEOF'
-from pydantic_settings import BaseSettings
-
-class WorkerConfig(BaseSettings):
-    CONTROL_SERVER_URL: str
-    WORKER_API_KEY: str
-    HEARTBEAT_INTERVAL: int = 30
-    model_config = {{"env_file": ".env"}}
-CFGEOF
-
-cat > /opt/link-machine-worker/agent/heartbeat.py << 'HBEOF'
-import asyncio
-import platform
-import httpx
-from agent.version import AGENT_CODE_HASH
-
-async def heartbeat_loop(config):
-    async with httpx.AsyncClient() as client:
-        while True:
-            try:
-                stats = {{
-                    "hostname": platform.node(),
-                }}
-                resp = await client.post(
-                    f"{{config.CONTROL_SERVER_URL}}/api/worker-agent/heartbeat",
-                    json={{"system_stats": stats, "code_hash": AGENT_CODE_HASH}},
-                    headers={{"Authorization": f"Bearer {{config.WORKER_API_KEY}}"}},
-                    timeout=10,
-                )
-                if resp.status_code == 200:
-                    print(f"Heartbeat OK (hash: {{AGENT_CODE_HASH}})")
-                else:
-                    print(f"Heartbeat failed: {{resp.status_code}}")
-            except Exception as e:
-                print(f"Heartbeat error: {{e}}")
-            await asyncio.sleep(config.HEARTBEAT_INTERVAL)
-HBEOF
-
-cat > /opt/link-machine-worker/agent/main.py << 'MAINEOF'
-import asyncio
-from agent.config import WorkerConfig
-from agent.heartbeat import heartbeat_loop
-
-async def main():
-    config = WorkerConfig()
-    print(f"Worker agent starting. Control server: {{config.CONTROL_SERVER_URL}}")
-    await heartbeat_loop(config)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-MAINEOF
-
-cat > /opt/link-machine-worker/Dockerfile << 'DKEOF'
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY agent/ ./agent/
-COPY .env .
-CMD ["python", "-m", "agent.main"]
-DKEOF
+echo "{encoded_requirements}" | base64 -d > /opt/link-machine-worker/requirements.txt
+{file_writes}
+echo "{encoded_dockerfile}" | base64 -d > /opt/link-machine-worker/Dockerfile
 
 cat > /opt/link-machine-worker/docker-compose.yml << 'DCEOF'
 services:
@@ -152,15 +107,16 @@ DCEOF
 
 echo "=== Building worker Docker image ==="
 cd /opt/link-machine-worker
-docker compose build
+docker compose build --no-cache
 
 echo "=== Starting worker container ==="
-docker compose up -d
+docker compose up -d --force-recreate
 
 echo "=== Verifying worker is running ==="
-sleep 2
+sleep 3
 if docker ps | grep -q lm-worker; then
     echo "Worker container is running"
+    docker compose logs --tail 5
 else
     echo "WARNING: Worker container may not have started properly"
     docker compose logs

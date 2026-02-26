@@ -39,6 +39,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    volumes:
+      - ./worker:/worker-source:ro
     ports:
       - "8000:8000"
 

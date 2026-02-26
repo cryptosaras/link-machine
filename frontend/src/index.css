@@ -1,3 +1,46 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme — warm off-white with yellow/gold accents */
+    --surface: #f8f7f4;
+    --surface-secondary: #ffffff;
+    --surface-tertiary: #f0efe9;
+    --border: #e5e2d9;
+    --foreground: #1a1a1a;
+    --foreground-secondary: #6b7280;
+    --foreground-muted: #9ca3af;
+    --accent: #f0c130;
+    --accent-hover: #dbaf1e;
+    --accent-soft: #fef9c3;
+    --accent-foreground: #1a1a1a;
+    --sidebar: #fef9c3;
+    --sidebar-active: #f0c130;
+    --sidebar-active-text: #1a1a1a;
+    --sidebar-hover: #fef3c7;
+    --ring: #f0c130;
+    --overlay: rgba(0, 0, 0, 0.3);
+  }
+
+  .dark {
+    --surface: #030712;
+    --surface-secondary: #111827;
+    --surface-tertiary: #1f2937;
+    --border: #1f2937;
+    --foreground: #ffffff;
+    --foreground-secondary: #9ca3af;
+    --foreground-muted: #6b7280;
+    --accent: #f0c130;
+    --accent-hover: #dbaf1e;
+    --accent-soft: rgba(240, 193, 48, 0.1);
+    --accent-foreground: #1a1a1a;
+    --sidebar: #111827;
+    --sidebar-active: #1f2937;
+    --sidebar-active-text: #ffffff;
+    --sidebar-hover: #1f2937;
+    --ring: #4b5563;
+    --overlay: rgba(0, 0, 0, 0.7);
+  }
+}

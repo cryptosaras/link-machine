@@ -12,8 +12,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-950">
-        <div className="text-gray-400">Loading...</div>
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <div className="text-foreground-secondary">Loading...</div>
       </div>
     );
   }
