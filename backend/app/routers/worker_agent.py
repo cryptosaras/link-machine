@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.worker import Worker
 from app.schemas.worker import HeartbeatRequest, HeartbeatResponse
+from app.services.worker_version import EXPECTED_WORKER_HASH
 
 router = APIRouter(prefix="/api/worker-agent", tags=["worker-agent"])
 
@@ -28,5 +29,10 @@ async def heartbeat(
     worker.last_heartbeat = datetime.now(timezone.utc)
     worker.status = "online"
     worker.system_stats = body.system_stats
+    worker.code_hash = body.code_hash
+    worker.needs_update = (
+        bool(EXPECTED_WORKER_HASH) and body.code_hash != EXPECTED_WORKER_HASH
+        if body.code_hash else bool(EXPECTED_WORKER_HASH)
+    )
     await db.commit()
     return HeartbeatResponse(status="ok")

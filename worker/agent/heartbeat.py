@@ -3,6 +3,8 @@ import platform
 
 import httpx
 
+from agent.version import AGENT_CODE_HASH
+
 
 async def heartbeat_loop(config):
     async with httpx.AsyncClient() as client:
@@ -13,12 +15,12 @@ async def heartbeat_loop(config):
                 }
                 resp = await client.post(
                     f"{config.CONTROL_SERVER_URL}/api/worker-agent/heartbeat",
-                    json={"system_stats": stats},
+                    json={"system_stats": stats, "code_hash": AGENT_CODE_HASH},
                     headers={"Authorization": f"Bearer {config.WORKER_API_KEY}"},
                     timeout=10,
                 )
                 if resp.status_code == 200:
-                    print("Heartbeat OK")
+                    print(f"Heartbeat OK (hash: {AGENT_CODE_HASH})")
                 else:
                     print(f"Heartbeat failed: {resp.status_code}")
             except Exception as e:

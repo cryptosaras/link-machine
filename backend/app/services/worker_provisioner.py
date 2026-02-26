@@ -63,6 +63,23 @@ REQEOF
 cat > /opt/link-machine-worker/agent/__init__.py << 'INITEOF'
 INITEOF
 
+cat > /opt/link-machine-worker/agent/version.py << 'VEREOF'
+import hashlib
+from pathlib import Path
+
+def compute_code_hash() -> str:
+    agent_dir = Path(__file__).parent
+    source_files = sorted(agent_dir.rglob("*.py"))
+    hasher = hashlib.sha256()
+    for path in source_files:
+        relative = str(path.relative_to(agent_dir))
+        hasher.update(relative.encode())
+        hasher.update(path.read_bytes())
+    return hasher.hexdigest()[:16]
+
+AGENT_CODE_HASH = compute_code_hash()
+VEREOF
+
 cat > /opt/link-machine-worker/agent/config.py << 'CFGEOF'
 from pydantic_settings import BaseSettings
 
@@ -77,6 +94,7 @@ cat > /opt/link-machine-worker/agent/heartbeat.py << 'HBEOF'
 import asyncio
 import platform
 import httpx
+from agent.version import AGENT_CODE_HASH
 
 async def heartbeat_loop(config):
     async with httpx.AsyncClient() as client:
@@ -87,12 +105,12 @@ async def heartbeat_loop(config):
                 }}
                 resp = await client.post(
                     f"{{config.CONTROL_SERVER_URL}}/api/worker-agent/heartbeat",
-                    json={{"system_stats": stats}},
+                    json={{"system_stats": stats, "code_hash": AGENT_CODE_HASH}},
                     headers={{"Authorization": f"Bearer {{config.WORKER_API_KEY}}"}},
                     timeout=10,
                 )
                 if resp.status_code == 200:
-                    print(f"Heartbeat OK")
+                    print(f"Heartbeat OK (hash: {{AGENT_CODE_HASH}})")
                 else:
                     print(f"Heartbeat failed: {{resp.status_code}}")
             except Exception as e:

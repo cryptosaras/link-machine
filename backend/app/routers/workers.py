@@ -11,7 +11,7 @@ from app.dependencies import get_current_user
 from app.models.setting import Setting
 from app.models.user import User
 from app.models.worker import Worker
-from app.schemas.worker import WorkerCreate, WorkerCreateResponse, WorkerResponse
+from app.schemas.worker import BatchUpdateRequest, WorkerCreate, WorkerCreateResponse, WorkerResponse
 from app.utils.encryption import encrypt
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
@@ -31,6 +31,8 @@ def _worker_response(w: Worker) -> WorkerResponse:
         status=w.status,
         last_heartbeat=w.last_heartbeat,
         system_stats=w.system_stats or {},
+        code_hash=w.code_hash,
+        needs_update=w.needs_update,
         created_at=w.created_at,
         updated_at=w.updated_at,
     )
@@ -100,18 +102,7 @@ async def delete_worker(
     await db.commit()
 
 
-@router.post("/{worker_id}/install")
-async def install_worker(
-    worker_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(Worker).where(Worker.id == worker_id))
-    worker = result.scalar_one_or_none()
-    if not worker:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
-
-    # Get control server URL from settings
+async def _get_control_url(db: AsyncSession) -> str:
     setting_result = await db.execute(
         select(Setting).where(Setting.key == "control_server_url")
     )
@@ -122,14 +113,16 @@ async def install_worker(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Control server URL not configured. Go to Settings first.",
         )
+    return control_url
+
+
+async def _start_install(worker: Worker, control_url: str, db: AsyncSession):
+    from app.services.worker_provisioner import provision_worker
+    from app.utils.encryption import decrypt
 
     worker.status = "provisioning"
     worker.install_log = None
     await db.commit()
-
-    # Launch provisioning in background
-    from app.services.worker_provisioner import provision_worker
-    from app.utils.encryption import decrypt
 
     ssh_password = decrypt(worker.ssh_password_encrypted) if worker.ssh_password_encrypted else None
     ssh_key = decrypt(worker.ssh_key_encrypted) if worker.ssh_key_encrypted else None
@@ -150,4 +143,49 @@ async def install_worker(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
+
+@router.post("/{worker_id}/install")
+async def install_worker(
+    worker_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Worker).where(Worker.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
+
+    if worker.status == "provisioning":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Worker is already being provisioned",
+        )
+
+    control_url = await _get_control_url(db)
+    await _start_install(worker, control_url, db)
+
     return {"status": "provisioning", "worker_id": str(worker.id)}
+
+
+@router.post("/batch-update")
+async def batch_update_workers(
+    body: BatchUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    control_url = await _get_control_url(db)
+
+    results = []
+    for worker_id in body.worker_ids:
+        result = await db.execute(select(Worker).where(Worker.id == worker_id))
+        worker = result.scalar_one_or_none()
+        if not worker:
+            results.append({"worker_id": worker_id, "status": "not_found"})
+            continue
+        if worker.status == "provisioning":
+            results.append({"worker_id": worker_id, "status": "already_provisioning"})
+            continue
+        await _start_install(worker, control_url, db)
+        results.append({"worker_id": worker_id, "status": "provisioning"})
+
+    return {"workers": results}

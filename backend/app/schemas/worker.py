@@ -21,6 +21,8 @@ class WorkerResponse(BaseModel):
     status: str
     last_heartbeat: datetime | None
     system_stats: dict
+    code_hash: str | None
+    needs_update: bool
     created_at: datetime
     updated_at: datetime
 
@@ -29,8 +31,13 @@ class WorkerCreateResponse(WorkerResponse):
     api_key: str
 
 
+class BatchUpdateRequest(BaseModel):
+    worker_ids: list[str]
+
+
 class HeartbeatRequest(BaseModel):
     system_stats: dict = {}
+    code_hash: str | None = None
 
 
 class HeartbeatResponse(BaseModel):
