@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, Globe, Link, Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Globe, Link, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,9 @@ export default function WebsiteList() {
   const [scrapeExtractText, setScrapeExtractText] = useState(false);
   const [scrapeTextOnly, setScrapeTextOnly] = useState(false);
   const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetWebsite, setResetWebsite] = useState<Website | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const fetchWebsites = async () => {
     const res = await api.get("/websites");
@@ -93,6 +96,19 @@ export default function WebsiteList() {
   const handleDelete = async (id: string) => {
     await api.delete(`/websites/${id}`);
     fetchWebsites();
+  };
+
+  const handleResetLinks = async () => {
+    if (!resetWebsite) return;
+    setResetLoading(true);
+    try {
+      await api.delete(`/websites/${resetWebsite.id}/links`);
+      setResetOpen(false);
+      setResetWebsite(null);
+      fetchWebsites();
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -190,7 +206,6 @@ export default function WebsiteList() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
-                        variant="outline"
                         size="sm"
                         onClick={() => {
                           setScrapeWebsite(site);
@@ -198,10 +213,21 @@ export default function WebsiteList() {
                           setScrapeTextOnly(false);
                           setScrapeOpen(true);
                         }}
-                        className="border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                        className="bg-accent text-accent-foreground hover:bg-accent/80"
                       >
                         <Search className="h-3.5 w-3.5 mr-1.5" />
                         Scrape
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setResetWebsite(site);
+                          setResetOpen(true);
+                        }}
+                        title="Reset links & pages"
+                      >
+                        <RotateCcw className="h-4 w-4 text-foreground-muted hover:text-orange-400" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -219,6 +245,38 @@ export default function WebsiteList() {
           </table>
         </div>
       )}
+
+      {/* Reset Links Confirmation */}
+      <Dialog open={resetOpen} onOpenChange={(o) => { if (!o) { setResetOpen(false); setResetWebsite(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Links & Pages</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 space-y-4">
+            <p className="text-sm text-foreground-secondary">
+              Are you sure you want to delete all scraped links and pages for{" "}
+              <span className="font-semibold text-foreground">{resetWebsite?.name}</span>?
+              This will remove{" "}
+              <span className="font-semibold text-foreground">
+                {resetWebsite?.links_count.toLocaleString()} links
+              </span>
+              {" "}and{" "}
+              <span className="font-semibold text-foreground">
+                {resetWebsite?.pages_count.toLocaleString()} pages
+              </span>.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setResetOpen(false); setResetWebsite(null); }}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleResetLinks} disabled={resetLoading}>
+                {resetLoading ? "Deleting..." : "Delete All Links & Pages"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={scrapeOpen} onOpenChange={setScrapeOpen}>
         <DialogContent>

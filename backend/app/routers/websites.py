@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -100,4 +100,21 @@ async def delete_website(
     if not website:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website not found")
     await db.delete(website)
+    await db.commit()
+
+
+@router.delete("/{website_id}/links", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_website_links(
+    website_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Website).where(Website.id == website_id, Website.user_id == user.id)
+    )
+    website = result.scalar_one_or_none()
+    if not website:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website not found")
+    await db.execute(delete(ScrapedLink).where(ScrapedLink.website_id == website.id))
+    await db.execute(delete(ScrapedPage).where(ScrapedPage.website_id == website.id))
     await db.commit()
