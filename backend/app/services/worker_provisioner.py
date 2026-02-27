@@ -103,7 +103,7 @@ echo "=== Writing worker configuration ==="
 cat > /opt/link-machine-worker/.env << 'ENVEOF'
 CONTROL_SERVER_URL={control_server_url}
 WORKER_API_KEY={worker_api_key}
-HEARTBEAT_INTERVAL=30
+HEARTBEAT_INTERVAL=5
 ENVEOF
 
 echo "=== Writing worker agent code ==="

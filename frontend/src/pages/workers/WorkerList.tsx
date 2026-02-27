@@ -150,7 +150,7 @@ export default function WorkerList() {
 
   useEffect(() => {
     fetchWorkers();
-    const interval = setInterval(fetchWorkers, 15000);
+    const interval = setInterval(fetchWorkers, 5000);
     return () => clearInterval(interval);
   }, []);
 

@@ -46,23 +46,29 @@ async def heartbeat(
     assigned_task = None
 
     # --- Recover stuck tasks from dead workers ---
-    cutoff = datetime.now(timezone.utc) - STALE_TASK_TIMEOUT
-    stale_result = await db.execute(
-        select(Task)
-        .join(Worker, Task.worker_id == Worker.id)
-        .where(
-            and_(
-                Task.status == "running",
-                Worker.last_heartbeat < cutoff,
+    try:
+        cutoff = datetime.now(timezone.utc) - STALE_TASK_TIMEOUT
+        stale_result = await db.execute(
+            select(Task)
+            .where(
+                and_(
+                    Task.status == "running",
+                    Task.worker_id.isnot(None),
+                    Task.started_at < cutoff,
+                )
             )
+            .with_for_update(skip_locked=True)
         )
-        .with_for_update(skip_locked=True)
-    )
-    for stale_task in stale_result.scalars().all():
-        stale_task.status = "pending"
-        stale_task.worker_id = None
-        stale_task.started_at = None
-        stale_task.progress = {}
+        for stale_task in stale_result.scalars().all():
+            # Check if the assigned worker is actually dead
+            stale_worker = await db.get(Worker, stale_task.worker_id)
+            if stale_worker and stale_worker.last_heartbeat and stale_worker.last_heartbeat < cutoff:
+                stale_task.status = "pending"
+                stale_task.worker_id = None
+                stale_task.started_at = None
+                stale_task.progress = {}
+    except Exception:
+        pass  # Don't let recovery crash the heartbeat
 
     if body.current_task_id is None:
         task_result = await db.execute(
