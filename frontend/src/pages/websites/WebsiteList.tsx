@@ -185,7 +185,11 @@ export default function WebsiteList() {
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
               {websites.map((site) => (
-                <tr key={site.id} className="bg-surface hover:bg-surface-tertiary">
+                <tr
+                  key={site.id}
+                  className="bg-surface hover:bg-surface-tertiary cursor-pointer"
+                  onClick={() => navigate(`/websites/${site.id}`)}
+                >
                   <td className="px-4 py-3 font-medium text-foreground">{site.name}</td>
                   <td className="px-4 py-3 text-foreground-secondary">{site.url}</td>
                   <td className="px-4 py-3">
@@ -203,7 +207,7 @@ export default function WebsiteList() {
                   <td className="px-4 py-3 text-foreground-muted">
                     {new Date(site.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"

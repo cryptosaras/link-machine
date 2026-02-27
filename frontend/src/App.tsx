@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import MainLayout from "@/components/layout/MainLayout";
 import Login from "@/pages/Login";
 import WebsiteList from "@/pages/websites/WebsiteList";
+import WebsiteDetail from "@/pages/websites/WebsiteDetail";
 import WorkerList from "@/pages/workers/WorkerList";
 import SettingsPage from "@/pages/Settings";
 import TaskList from "@/pages/tasks/TaskList";
@@ -45,6 +46,7 @@ export default function App() {
       >
         <Route index element={<WebsiteList />} />
         <Route path="/websites" element={<WebsiteList />} />
+        <Route path="/websites/:id" element={<WebsiteDetail />} />
         <Route path="/workers" element={<WorkerList />} />
         <Route path="/tasks" element={<TaskList />} />
         <Route path="/settings" element={<SettingsPage />} />
