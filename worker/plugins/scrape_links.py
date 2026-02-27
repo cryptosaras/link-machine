@@ -126,10 +126,13 @@ class PluginCrawler:
                     if "text/html" in ct or "xml" in ct or "text/plain" in ct:
                         raw = await resp.read()
                         return raw.decode("utf-8", errors="replace")
+                    print(f"[scrape] Skipped {url} — Content-Type: {ct}")
                     return None
+                print(f"[scrape] HTTP {resp.status} for {url}")
                 self.error_count += 1
                 return None
-        except (asyncio.TimeoutError, aiohttp.ClientError, UnicodeDecodeError):
+        except (asyncio.TimeoutError, aiohttp.ClientError, UnicodeDecodeError) as e:
+            print(f"[scrape] Fetch error for {url}: {type(e).__name__}: {e}")
             self.error_count += 1
             return None
 
@@ -163,7 +166,8 @@ class PluginCrawler:
                     self._process_sitemap(queue, url, text, depth)
                 else:
                     self._process_html(queue, url, text, depth)
-            except Exception:
+            except Exception as e:
+                print(f"[scrape] Worker exception for {url}: {type(e).__name__}: {e}")
                 self.error_count += 1
             finally:
                 queue.task_done()
@@ -253,6 +257,8 @@ async def run(params, report_progress, report_complete, upload_links):
     if not start_url:
         await report_complete("failed", error_message="No URL provided")
         return
+
+    print(f"[scrape] Starting crawl: start_url={start_url} website_url={website_url} sitemap_url={website_sitemap_url} use_sitemap={use_sitemap} depth={depth} max_pages={max_pages}")
 
     crawler = PluginCrawler(
         start_url=start_url,
