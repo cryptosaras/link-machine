@@ -64,6 +64,14 @@ export default function WorkerList() {
     });
   };
 
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === workers.length
+        ? new Set()
+        : new Set(workers.map((w) => w.id))
+    );
+  };
+
   const handleBatchUpdate = async () => {
     if (selectedIds.size === 0) return;
     setUpdating(true);
@@ -234,6 +242,7 @@ export default function WorkerList() {
           workers={workers}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
           onInstall={handleInstall}
           onReset={handleReset}
           onDelete={handleDeleteClick}

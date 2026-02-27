@@ -58,15 +58,15 @@ def normalize_url(url, base_url):
     host = (parsed.hostname or "").lower()
     if not host:
         return None
+    # Skip URLs with query strings entirely
+    if parsed.query:
+        return None
     port = parsed.port
     if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
         port = None
     netloc = host + (f":{port}" if port else "")
     path = parsed.path.rstrip("/") or "/"
-    params = parse_qs(parsed.query, keep_blank_values=False)
-    filtered = {k: v for k, v in sorted(params.items()) if k not in TRACKING_PARAMS}
-    query = urlencode(filtered, doseq=True)
-    return urlunparse((scheme, netloc, path, "", query, ""))
+    return urlunparse((scheme, netloc, path, "", "", ""))
 
 
 def is_sitemap_content(text):

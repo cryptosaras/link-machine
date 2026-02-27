@@ -49,6 +49,7 @@ interface WorkerTableProps {
   workers: Worker[];
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onToggleSelectAll: () => void;
   onInstall: (workerId: string) => void;
   onReset: (workerId: string) => void;
   onDelete: (worker: Worker) => void;
@@ -60,6 +61,7 @@ export default function WorkerTable({
   workers,
   selectedIds,
   onToggleSelect,
+  onToggleSelectAll,
   onInstall,
   onReset,
   onDelete,
@@ -71,7 +73,17 @@ export default function WorkerTable({
       <table className="w-full text-sm">
         <thead className="border-b border-[var(--border)] bg-surface-secondary">
           <tr>
-            <th className="w-10 px-3 py-3" />
+            <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={workers.length > 0 && selectedIds.size === workers.length}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < workers.length;
+                    }}
+                    onChange={onToggleSelectAll}
+                    className="h-4 w-4 rounded accent-accent"
+                  />
+                </th>
             <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
               Name
             </th>
