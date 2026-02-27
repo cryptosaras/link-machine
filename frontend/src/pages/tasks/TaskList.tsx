@@ -148,12 +148,8 @@ export default function TaskList() {
 
   const handleRowClick = async (task: Task) => {
     setSelectedTask(task);
-    if (task.status === "completed") {
-      const res = await api.get(`/tasks/${task.id}/links`);
-      setLinks(res.data);
-    } else {
-      setLinks([]);
-    }
+    const res = await api.get(`/tasks/${task.id}/links`);
+    setLinks(res.data);
   };
 
   const handleRetry = async () => {
@@ -313,8 +309,15 @@ export default function TaskList() {
                   <td className="px-4 py-3 text-foreground-secondary text-xs">
                     {formatProgress(task)}
                   </td>
-                  <td className="px-4 py-3 text-foreground-muted text-xs">
-                    {task.worker_name || "-"}
+                  <td className="px-4 py-3 text-xs">
+                    {task.worker_name ? (
+                      <span className="inline-flex items-center gap-1.5 text-foreground-secondary font-medium">
+                        <span className={`h-1.5 w-1.5 rounded-full ${task.status === "running" ? "bg-emerald-400" : "bg-foreground-muted"}`} />
+                        {task.worker_name}
+                      </span>
+                    ) : (
+                      <span className="text-foreground-muted">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-foreground-muted text-xs">
                     {formatDuration(task.started_at, task.completed_at)}
@@ -358,6 +361,12 @@ export default function TaskList() {
               {selectedTask.website_name && (
                 <span className="text-sm text-foreground-muted">
                   {selectedTask.website_name}
+                </span>
+              )}
+              {selectedTask.worker_name && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-0.5 text-xs font-medium text-foreground-secondary">
+                  <span className={`h-1.5 w-1.5 rounded-full ${selectedTask.status === "running" ? "bg-emerald-400 animate-pulse" : "bg-foreground-muted"}`} />
+                  {selectedTask.worker_name}
                 </span>
               )}
             </div>
