@@ -164,14 +164,12 @@ class PluginCrawler:
             try:
                 if self.fetched_count >= self.max_pages:
                     self._done = True
-                    queue.task_done()
                     break
                 if self.delay > 0:
                     await asyncio.sleep(random.uniform(0, self.delay))
                 text = await self._fetch(session, url)
                 self.fetched_count += 1
                 if text is None:
-                    queue.task_done()
                     continue
                 if is_sitemap_content(text):
                     self._process_sitemap(queue, url, text, depth)
@@ -280,13 +278,18 @@ async def run(params, report_progress, report_complete, upload_links):
 
     try:
         links = await crawler.crawl(progress_callback=report_progress)
+        print(f"[scrape] Crawl finished: {len(links)} links found", flush=True)
 
         link_list = sorted(links)
+        total_batches = (len(link_list) + 499) // 500
         for i in range(0, len(link_list), 500):
+            batch_num = i // 500 + 1
             batch = link_list[i:i+500]
+            print(f"[scrape] Uploading batch {batch_num}/{total_batches} ({len(batch)} links)", flush=True)
             await upload_links(batch)
 
         elapsed = time.monotonic() - crawler.t0
+        print(f"[scrape] Reporting complete: {len(links)} links, {elapsed:.1f}s", flush=True)
         await report_complete("completed", result_summary={
             "total_links": len(links),
             "pages_crawled": crawler.pages_crawled,
@@ -295,5 +298,7 @@ async def run(params, report_progress, report_complete, upload_links):
             "errors": crawler.error_count,
             "duration_seconds": round(elapsed, 2),
         })
+        print("[scrape] Done!", flush=True)
     except Exception as e:
+        print(f"[scrape] FAILED: {type(e).__name__}: {e}", flush=True)
         await report_complete("failed", error_message=str(e))
