@@ -12,6 +12,7 @@ class Worker(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    worker_type: Mapped[str] = mapped_column(String(20), nullable=False, default="custom")
     ssh_host: Mapped[str] = mapped_column(String(255), nullable=False)
     ssh_user: Mapped[str] = mapped_column(String(100), nullable=False, default="root")
     ssh_port: Mapped[int] = mapped_column(Integer, nullable=False, default=22)

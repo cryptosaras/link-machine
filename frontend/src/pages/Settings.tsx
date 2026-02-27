@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +7,8 @@ import { Label } from "@/components/ui/label";
 
 export default function SettingsPage() {
   const [controlUrl, setControlUrl] = useState("");
+  const [sshKey, setSshKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -14,6 +17,10 @@ export default function SettingsPage() {
       .get("/settings/control_server_url")
       .then((r) => setControlUrl(r.data.value))
       .catch(() => {});
+    api
+      .get("/settings/upcloud_ssh_key")
+      .then((r) => setSshKey(r.data.value))
+      .catch(() => {});
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -21,7 +28,10 @@ export default function SettingsPage() {
     setSaving(true);
     setSaved(false);
     try {
-      await api.put("/settings/control_server_url", { value: controlUrl });
+      await Promise.all([
+        api.put("/settings/control_server_url", { value: controlUrl }),
+        api.put("/settings/upcloud_ssh_key", { value: sshKey }),
+      ]);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } finally {
@@ -34,7 +44,7 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold text-foreground">Settings</h1>
 
       <div className="max-w-lg rounded-lg border border-[var(--border)] bg-surface-secondary p-6">
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="control-url">Control Server URL</Label>
             <Input
@@ -49,6 +59,44 @@ export default function SettingsPage() {
               https://mydomain.com).
             </p>
           </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ssh-key">UpCloud SSH Private Key</Label>
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground-secondary"
+              >
+                {showKey ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+                {showKey ? "Hide" : "Show"}
+              </button>
+            </div>
+            {showKey ? (
+              <textarea
+                id="ssh-key"
+                value={sshKey}
+                onChange={(e) => setSshKey(e.target.value)}
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
+                rows={6}
+                className="flex w-full rounded-md border border-[var(--border)] bg-surface-secondary px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] font-mono"
+              />
+            ) : (
+              <div className="flex w-full items-center rounded-md border border-[var(--border)] bg-surface-secondary px-3 py-2 text-sm text-foreground-muted">
+                {sshKey ? "Key configured" : "No key configured"}
+              </div>
+            )}
+            <p className="text-xs text-foreground-muted">
+              The SSH private key used to connect to UpCloud workers. Add your
+              public key when creating UpCloud servers, paste the private key
+              here.
+            </p>
+          </div>
+
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : "Save"}

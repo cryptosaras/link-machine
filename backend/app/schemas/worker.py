@@ -4,7 +4,8 @@ from pydantic import BaseModel
 
 
 class WorkerCreate(BaseModel):
-    name: str
+    worker_type: str = "custom"
+    name: str | None = None
     ssh_host: str
     ssh_user: str = "root"
     ssh_port: int = 22
@@ -15,6 +16,7 @@ class WorkerCreate(BaseModel):
 class WorkerResponse(BaseModel):
     id: str
     name: str
+    worker_type: str
     ssh_host: str
     ssh_user: str
     ssh_port: int

@@ -27,6 +27,7 @@ import {
 interface Worker {
   id: string;
   name: string;
+  worker_type: string;
   ssh_host: string;
   ssh_user: string;
   ssh_port: number;
@@ -109,6 +110,7 @@ export default function WorkerList() {
   const terminalWsRef = useRef<WebSocket | null>(null);
 
   // Add worker form state
+  const [formWorkerType, setFormWorkerType] = useState<"custom" | "upcloud">("upcloud");
   const [formName, setFormName] = useState("");
   const [formHost, setFormHost] = useState("");
   const [formUser, setFormUser] = useState("root");
@@ -252,15 +254,18 @@ export default function WorkerList() {
     setFormLoading(true);
     try {
       const payload: Record<string, unknown> = {
-        name: formName,
+        worker_type: formWorkerType,
         ssh_host: formHost,
-        ssh_user: formUser,
-        ssh_port: parseInt(formPort),
       };
-      if (formAuthType === "password") {
-        payload.ssh_password = formPassword;
-      } else {
-        payload.ssh_key = formKey;
+      if (formWorkerType === "custom") {
+        payload.name = formName;
+        payload.ssh_user = formUser;
+        payload.ssh_port = parseInt(formPort);
+        if (formAuthType === "password") {
+          payload.ssh_password = formPassword;
+        } else {
+          payload.ssh_key = formKey;
+        }
       }
       const res = await api.post("/workers", payload);
       setCreatedApiKey(res.data.api_key);
@@ -273,6 +278,7 @@ export default function WorkerList() {
   };
 
   const resetForm = () => {
+    setFormWorkerType("upcloud");
     setFormName("");
     setFormHost("");
     setFormUser("root");
@@ -427,23 +433,40 @@ export default function WorkerList() {
               <DialogHeader>
                 <DialogTitle>Add Worker</DialogTitle>
                 <DialogDescription>
-                  Enter the SSH details for the worker VPS.
+                  Add a new worker VPS to run tasks.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleAdd} className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="w-name">Name</Label>
-                  <Input
-                    id="w-name"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Worker US-1"
-                    required
-                  />
+                {/* Worker type toggle */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormWorkerType("upcloud")}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      formWorkerType === "upcloud"
+                        ? "bg-accent text-accent-foreground"
+                        : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
+                    }`}
+                  >
+                    UpCloud
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormWorkerType("custom")}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      formWorkerType === "custom"
+                        ? "bg-accent text-accent-foreground"
+                        : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
+                    }`}
+                  >
+                    Custom SSH
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+
+                {formWorkerType === "upcloud" ? (
+                  /* UpCloud: just IP address */
                   <div className="space-y-2">
-                    <Label htmlFor="w-host">SSH Host</Label>
+                    <Label htmlFor="w-host">IP Address</Label>
                     <Input
                       id="w-host"
                       value={formHost}
@@ -451,81 +474,110 @@ export default function WorkerList() {
                       placeholder="123.45.67.89"
                       required
                     />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="w-user">User</Label>
-                      <Input
-                        id="w-user"
-                        value={formUser}
-                        onChange={(e) => setFormUser(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="w-port">Port</Label>
-                      <Input
-                        id="w-port"
-                        type="number"
-                        value={formPort}
-                        onChange={(e) => setFormPort(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Authentication</Label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFormAuthType("password")}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        formAuthType === "password"
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
-                      }`}
-                    >
-                      Password
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFormAuthType("key")}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        formAuthType === "key"
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
-                      }`}
-                    >
-                      SSH Key
-                    </button>
-                  </div>
-                </div>
-
-                {formAuthType === "password" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="w-password">Password</Label>
-                    <Input
-                      id="w-password"
-                      type="password"
-                      value={formPassword}
-                      onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder="SSH password"
-                      required
-                    />
+                    <p className="text-xs text-foreground-muted">
+                      Enter the IP of your UpCloud server. SSH key from Settings will be used.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="w-key">Private Key (PEM)</Label>
-                    <textarea
-                      id="w-key"
-                      value={formKey}
-                      onChange={(e) => setFormKey(e.target.value)}
-                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
-                      required
-                      rows={5}
-                      className="flex w-full rounded-md border border-[var(--border)] bg-surface-secondary px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] font-mono"
-                    />
-                  </div>
+                  /* Custom SSH: full form */
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="w-name">Name</Label>
+                      <Input
+                        id="w-name"
+                        value={formName}
+                        onChange={(e) => setFormName(e.target.value)}
+                        placeholder="Worker US-1"
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="w-host-custom">SSH Host</Label>
+                        <Input
+                          id="w-host-custom"
+                          value={formHost}
+                          onChange={(e) => setFormHost(e.target.value)}
+                          placeholder="123.45.67.89"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="w-user">User</Label>
+                          <Input
+                            id="w-user"
+                            value={formUser}
+                            onChange={(e) => setFormUser(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="w-port">Port</Label>
+                          <Input
+                            id="w-port"
+                            type="number"
+                            value={formPort}
+                            onChange={(e) => setFormPort(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Authentication</Label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormAuthType("password")}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                            formAuthType === "password"
+                              ? "bg-accent text-accent-foreground"
+                              : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
+                          }`}
+                        >
+                          Password
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormAuthType("key")}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                            formAuthType === "key"
+                              ? "bg-accent text-accent-foreground"
+                              : "bg-surface-tertiary text-foreground-secondary hover:text-foreground"
+                          }`}
+                        >
+                          SSH Key
+                        </button>
+                      </div>
+                    </div>
+
+                    {formAuthType === "password" ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="w-password">Password</Label>
+                        <Input
+                          id="w-password"
+                          type="password"
+                          value={formPassword}
+                          onChange={(e) => setFormPassword(e.target.value)}
+                          placeholder="SSH password"
+                          required
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="w-key">Private Key (PEM)</Label>
+                        <textarea
+                          id="w-key"
+                          value={formKey}
+                          onChange={(e) => setFormKey(e.target.value)}
+                          placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
+                          required
+                          rows={5}
+                          className="flex w-full rounded-md border border-[var(--border)] bg-surface-secondary px-3 py-2 text-sm text-foreground placeholder:text-foreground-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] font-mono"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <Button type="submit" className="w-full" disabled={formLoading}>
@@ -585,7 +637,14 @@ export default function WorkerList() {
                     )}
                   </td>
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {w.name}
+                    <div className="flex items-center gap-2">
+                      {w.name}
+                      {w.worker_type === "upcloud" && (
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                          UpCloud
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-foreground-secondary">
                     {w.ssh_user}@{w.ssh_host}:{w.ssh_port}
