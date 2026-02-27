@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.task import ScrapedLink
+from app.models.task import ScrapedLink, ScrapedPage
 from app.models.user import User
 from app.models.website import Website
 from app.schemas.website import WebsiteCreate, WebsiteResponse
@@ -25,9 +25,22 @@ async def list_websites(
         .group_by(ScrapedLink.website_id)
         .subquery()
     )
+    pages_count_sub = (
+        select(
+            ScrapedPage.website_id,
+            func.count(ScrapedPage.id).label("pages_count"),
+        )
+        .group_by(ScrapedPage.website_id)
+        .subquery()
+    )
     result = await db.execute(
-        select(Website, func.coalesce(links_count_sub.c.links_count, 0).label("links_count"))
+        select(
+            Website,
+            func.coalesce(links_count_sub.c.links_count, 0).label("links_count"),
+            func.coalesce(pages_count_sub.c.pages_count, 0).label("pages_count"),
+        )
         .outerjoin(links_count_sub, Website.id == links_count_sub.c.website_id)
+        .outerjoin(pages_count_sub, Website.id == pages_count_sub.c.website_id)
         .where(Website.user_id == user.id)
         .order_by(Website.created_at.desc())
     )
@@ -39,10 +52,11 @@ async def list_websites(
             url=w.url,
             sitemap_url=w.sitemap_url,
             links_count=links_count,
+            pages_count=pages_count,
             created_at=w.created_at,
             updated_at=w.updated_at,
         )
-        for w, links_count in rows
+        for w, links_count, pages_count in rows
     ]
 
 
@@ -67,6 +81,7 @@ async def create_website(
         url=website.url,
         sitemap_url=website.sitemap_url,
         links_count=0,
+        pages_count=0,
         created_at=website.created_at,
         updated_at=website.updated_at,
     )

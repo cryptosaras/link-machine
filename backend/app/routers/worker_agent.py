@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.task import ScrapedLink, Task
+from app.models.task import ScrapedLink, ScrapedPage, Task
 from app.models.website import Website
 from app.models.worker import Worker
 from app.schemas.worker import HeartbeatRequest, HeartbeatResponse
@@ -125,6 +125,18 @@ class ScrapedLinksUpload(PydanticBaseModel):
     urls: list[str]
 
 
+class PageData(PydanticBaseModel):
+    url: str
+    title: str | None = None
+    meta_description: str | None = None
+    body_text: str | None = None
+
+
+class ScrapedPagesUpload(PydanticBaseModel):
+    task_id: str
+    pages: list[PageData]
+
+
 class WorkerLogsUpload(PydanticBaseModel):
     lines: list[str]
 
@@ -215,6 +227,45 @@ async def upload_scraped_links(
         await db.commit()
         return {"status": "ok", "inserted": result.rowcount, "skipped": len(body.urls) - result.rowcount}
     return {"status": "ok", "inserted": 0, "skipped": 0}
+
+
+@router.post("/task-pages")
+async def upload_scraped_pages(
+    body: ScrapedPagesUpload,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    worker = await _get_worker_by_auth(authorization, db)
+    task = await db.get(Task, body.task_id)
+    if not task or task.worker_id != worker.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if body.pages:
+        values = [
+            {
+                "website_id": task.website_id,
+                "task_id": task.id,
+                "url": p.url,
+                "title": p.title,
+                "meta_description": p.meta_description,
+                "body_text": p.body_text,
+            }
+            for p in body.pages
+        ]
+        stmt = pg_insert(ScrapedPage).values(values)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_scraped_pages_website_url",
+            set_={
+                "title": stmt.excluded.title,
+                "meta_description": stmt.excluded.meta_description,
+                "body_text": stmt.excluded.body_text,
+                "task_id": stmt.excluded.task_id,
+            },
+        )
+        await db.execute(stmt)
+        await db.commit()
+        return {"status": "ok", "upserted": len(body.pages)}
+    return {"status": "ok", "upserted": 0}
 
 
 WORKER_LOG_MAX = 500  # max lines kept in Redis per worker

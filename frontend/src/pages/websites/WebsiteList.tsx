@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Globe, Link, Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Globe, Link, Plus, Search, Trash2 } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ interface Website {
   url: string;
   sitemap_url: string | null;
   links_count: number;
+  pages_count: number;
   created_at: string;
 }
 
@@ -36,6 +37,8 @@ export default function WebsiteList() {
   const [scrapeMaxPages, setScrapeMaxPages] = useState("10000");
   const [scrapeConcurrent, setScrapeConcurrent] = useState("30");
   const [scrapeUseSitemap, setScrapeUseSitemap] = useState(false);
+  const [scrapeExtractText, setScrapeExtractText] = useState(false);
+  const [scrapeTextOnly, setScrapeTextOnly] = useState(false);
   const [scrapeLoading, setScrapeLoading] = useState(false);
 
   const fetchWebsites = async () => {
@@ -74,6 +77,8 @@ export default function WebsiteList() {
           max_pages: parseInt(scrapeMaxPages),
           concurrent: parseInt(scrapeConcurrent),
           use_sitemap: scrapeUseSitemap,
+          extract_text: scrapeExtractText,
+          extract_text_only: scrapeTextOnly,
         },
       });
       setScrapeOpen(false);
@@ -146,6 +151,7 @@ export default function WebsiteList() {
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Name</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">URL</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Links</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Pages</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Added</th>
                 <th className="px-4 py-3 text-right font-medium text-foreground-secondary">Actions</th>
               </tr>
@@ -161,29 +167,40 @@ export default function WebsiteList() {
                       {site.links_count.toLocaleString()}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-foreground-secondary">
+                      <FileText className="h-3.5 w-3.5 text-foreground-muted" />
+                      {site.pages_count.toLocaleString()}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-foreground-muted">
                     {new Date(site.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setScrapeWebsite(site);
-                        setScrapeOpen(true);
-                      }}
-                      title="Scrape Links"
-                    >
-                      <Search className="h-4 w-4 text-foreground-muted hover:text-emerald-400" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(site.id)}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4 text-foreground-muted hover:text-red-400" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setScrapeWebsite(site);
+                          setScrapeExtractText(false);
+                          setScrapeTextOnly(false);
+                          setScrapeOpen(true);
+                        }}
+                        className="text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-300"
+                      >
+                        <Search className="h-3.5 w-3.5 mr-1.5" />
+                        Scrape
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(site.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4 text-foreground-muted hover:text-red-400" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -195,55 +212,98 @@ export default function WebsiteList() {
       <Dialog open={scrapeOpen} onOpenChange={setScrapeOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Scrape Links</DialogTitle>
+            <DialogTitle>Scrape Website</DialogTitle>
             <DialogDescription>
               Configure scraping for {scrapeWebsite?.name}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleScrape} className="mt-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="scrape-depth">Max Depth (0 = unlimited)</Label>
-              <Input
-                id="scrape-depth"
-                type="number"
-                value={scrapeDepth}
-                onChange={(e) => setScrapeDepth(e.target.value)}
-                min="0"
-              />
+            {!scrapeTextOnly && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="scrape-depth">Max Depth (0 = unlimited)</Label>
+                  <Input
+                    id="scrape-depth"
+                    type="number"
+                    value={scrapeDepth}
+                    onChange={(e) => setScrapeDepth(e.target.value)}
+                    min="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="scrape-max-pages">Max Pages</Label>
+                  <Input
+                    id="scrape-max-pages"
+                    type="number"
+                    value={scrapeMaxPages}
+                    onChange={(e) => setScrapeMaxPages(e.target.value)}
+                    min="1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="scrape-concurrent">Concurrent Workers</Label>
+                  <Input
+                    id="scrape-concurrent"
+                    type="number"
+                    value={scrapeConcurrent}
+                    onChange={(e) => setScrapeConcurrent(e.target.value)}
+                    min="1"
+                    max="100"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="scrape-sitemap"
+                    type="checkbox"
+                    checked={scrapeUseSitemap}
+                    onChange={(e) => setScrapeUseSitemap(e.target.checked)}
+                    className="rounded border-[var(--border)]"
+                  />
+                  <Label htmlFor="scrape-sitemap">Start from sitemap URL</Label>
+                </div>
+              </>
+            )}
+
+            <div className="rounded-md border border-[var(--border)] bg-surface-secondary p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  id="scrape-extract-text"
+                  type="checkbox"
+                  checked={scrapeExtractText}
+                  onChange={(e) => {
+                    setScrapeExtractText(e.target.checked);
+                    if (!e.target.checked) setScrapeTextOnly(false);
+                  }}
+                  className="rounded border-[var(--border)]"
+                />
+                <Label htmlFor="scrape-extract-text">
+                  Extract page text (title, description, body)
+                </Label>
+              </div>
+              {scrapeExtractText && scrapeWebsite && scrapeWebsite.links_count > 0 && (
+                <div className="flex items-center gap-2 ml-5">
+                  <input
+                    id="scrape-text-only"
+                    type="checkbox"
+                    checked={scrapeTextOnly}
+                    onChange={(e) => setScrapeTextOnly(e.target.checked)}
+                    className="rounded border-[var(--border)]"
+                  />
+                  <Label htmlFor="scrape-text-only" className="text-foreground-secondary">
+                    Text only — re-visit {scrapeWebsite.links_count.toLocaleString()} existing links
+                  </Label>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="scrape-max-pages">Max Pages</Label>
-              <Input
-                id="scrape-max-pages"
-                type="number"
-                value={scrapeMaxPages}
-                onChange={(e) => setScrapeMaxPages(e.target.value)}
-                min="1"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="scrape-concurrent">Concurrent Workers</Label>
-              <Input
-                id="scrape-concurrent"
-                type="number"
-                value={scrapeConcurrent}
-                onChange={(e) => setScrapeConcurrent(e.target.value)}
-                min="1"
-                max="100"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                id="scrape-sitemap"
-                type="checkbox"
-                checked={scrapeUseSitemap}
-                onChange={(e) => setScrapeUseSitemap(e.target.checked)}
-                className="rounded border-[var(--border)]"
-              />
-              <Label htmlFor="scrape-sitemap">Start from sitemap URL</Label>
-            </div>
+
             <Button type="submit" className="w-full" disabled={scrapeLoading}>
-              {scrapeLoading ? "Creating task..." : "Start Scraping"}
+              {scrapeLoading
+                ? "Creating task..."
+                : scrapeTextOnly
+                  ? "Start Text Extraction"
+                  : scrapeExtractText
+                    ? "Start Scraping (Links + Text)"
+                    : "Start Scraping"}
             </Button>
           </form>
         </DialogContent>

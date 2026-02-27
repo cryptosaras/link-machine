@@ -90,9 +90,38 @@ def extract_html_links(html, page_url):
     return links
 
 
+def extract_page_text(html):
+    """Extract title, meta description, and cleaned body text from HTML."""
+    tree = LexborHTMLParser(html)
+    title = None
+    meta_desc = None
+    body_text = None
+
+    title_node = tree.css_first("title")
+    if title_node:
+        title = title_node.text(strip=True)[:1024]
+
+    for meta in tree.css("meta[name]"):
+        if (meta.attrs.get("name", "").lower() == "description"):
+            meta_desc = (meta.attrs.get("content") or "")[:4096]
+            break
+
+    body = tree.body
+    if body:
+        # Remove scripts, styles, nav, footer, header elements
+        for tag in body.css("script, style, nav, footer, header, noscript, iframe"):
+            tag.decompose()
+        body_text = body.text(separator=" ", strip=True)
+        # Collapse whitespace
+        body_text = re.sub(r"\s+", " ", body_text).strip()
+
+    return title, meta_desc, body_text
+
+
 class PluginCrawler:
     def __init__(self, start_url, max_depth=0, max_pages=10000,
-                 max_concurrent=30, delay=0.1, timeout=5.0):
+                 max_concurrent=30, delay=0.1, timeout=5.0,
+                 extract_text=False):
         parsed = urlparse(start_url)
         self.domain = (parsed.hostname or "").lower()
         self.start_url = normalize_url(start_url, start_url) or start_url
@@ -101,8 +130,10 @@ class PluginCrawler:
         self.max_concurrent = max_concurrent
         self.delay = delay
         self.timeout = timeout
+        self.extract_text = extract_text
         self.queued = set()
         self.all_internal_links = set()
+        self.extracted_pages = {}  # url -> {title, meta_description, body_text}
         self.pages_crawled = 0
         self.sitemaps_processed = 0
         self.fetched_count = 0
@@ -203,6 +234,14 @@ class PluginCrawler:
             self.all_internal_links.add(link)
             if self.max_depth == 0 or depth < self.max_depth:
                 self._enqueue(queue, link, depth + 1)
+        if self.extract_text:
+            title, meta_desc, body_text = extract_page_text(text)
+            self.extracted_pages[url] = {
+                "url": url,
+                "title": title,
+                "meta_description": meta_desc,
+                "body_text": body_text,
+            }
         self.pages_crawled += 1
 
     async def crawl(self, progress_callback=None):
@@ -249,7 +288,7 @@ class PluginCrawler:
         return self.all_internal_links
 
 
-async def run(params, report_progress, report_complete, upload_links):
+async def run(params, report_progress, report_complete, upload_links, upload_pages=None):
     """Plugin entry point called by task_runner."""
     website_url = params.get("website_url", "")
     website_sitemap_url = params.get("website_sitemap_url")
@@ -259,46 +298,161 @@ async def run(params, report_progress, report_complete, upload_links):
     delay = params.get("delay", 0.1)
     timeout = params.get("timeout", 15.0)
     use_sitemap = params.get("use_sitemap", False)
+    extract_text = params.get("extract_text", False)
+    extract_text_only = params.get("extract_text_only", False)
+    urls_to_scrape = params.get("urls_to_scrape", [])
+
+    # Text-only mode: visit provided URLs, extract text only
+    if extract_text_only and urls_to_scrape:
+        extract_text = True
+        max_pages = len(urls_to_scrape)
 
     start_url = website_sitemap_url if (use_sitemap and website_sitemap_url) else website_url
-    if not start_url:
+    if not start_url and not extract_text_only:
         await report_complete("failed", error_message="No URL provided")
         return
 
-    print(f"[scrape] Starting crawl: start_url={start_url} website_url={website_url} sitemap_url={website_sitemap_url} use_sitemap={use_sitemap} depth={depth} max_pages={max_pages}")
+    mode = "text-only" if extract_text_only else ("links+text" if extract_text else "links-only")
+    print(f"[scrape] Starting crawl: mode={mode} start_url={start_url} depth={depth} max_pages={max_pages}")
 
     crawler = PluginCrawler(
-        start_url=start_url,
+        start_url=start_url or website_url,
         max_depth=depth,
         max_pages=max_pages,
         max_concurrent=concurrent,
         delay=delay,
         timeout=timeout,
+        extract_text=extract_text,
     )
 
+    # In text-only mode, pre-populate the queue with existing URLs
+    if extract_text_only and urls_to_scrape:
+        for url in urls_to_scrape:
+            crawler.queued.add(url)
+            crawler.all_internal_links.add(url)
+
     try:
-        links = await crawler.crawl(progress_callback=report_progress)
+        if extract_text_only and urls_to_scrape:
+            # Override crawl to only visit provided URLs (no link discovery)
+            links = await _crawl_text_only(crawler, urls_to_scrape, report_progress)
+        else:
+            links = await crawler.crawl(progress_callback=report_progress)
+
         print(f"[scrape] Crawl finished: {len(links)} links found", flush=True)
 
-        link_list = sorted(links)
-        total_batches = (len(link_list) + 499) // 500
-        for i in range(0, len(link_list), 500):
-            batch_num = i // 500 + 1
-            batch = link_list[i:i+500]
-            print(f"[scrape] Uploading batch {batch_num}/{total_batches} ({len(batch)} links)", flush=True)
-            await upload_links(batch)
+        # Upload links (skip in text-only mode — links already exist)
+        if not extract_text_only:
+            link_list = sorted(links)
+            total_batches = (len(link_list) + 499) // 500
+            for i in range(0, len(link_list), 500):
+                batch_num = i // 500 + 1
+                batch = link_list[i:i+500]
+                print(f"[scrape] Uploading batch {batch_num}/{total_batches} ({len(batch)} links)", flush=True)
+                await upload_links(batch)
+
+        # Upload extracted pages
+        if extract_text and upload_pages and crawler.extracted_pages:
+            page_list = list(crawler.extracted_pages.values())
+            total_page_batches = (len(page_list) + 99) // 100
+            for i in range(0, len(page_list), 100):
+                batch_num = i // 100 + 1
+                batch = page_list[i:i+100]
+                print(f"[scrape] Uploading page text batch {batch_num}/{total_page_batches} ({len(batch)} pages)", flush=True)
+                await upload_pages(batch)
 
         elapsed = time.monotonic() - crawler.t0
-        print(f"[scrape] Reporting complete: {len(links)} links, {elapsed:.1f}s", flush=True)
-        await report_complete("completed", result_summary={
+        summary = {
             "total_links": len(links),
             "pages_crawled": crawler.pages_crawled,
             "sitemaps_processed": crawler.sitemaps_processed,
             "pages_fetched": crawler.fetched_count,
             "errors": crawler.error_count,
             "duration_seconds": round(elapsed, 2),
-        })
+        }
+        if extract_text:
+            summary["pages_with_text"] = len(crawler.extracted_pages)
+        print(f"[scrape] Reporting complete: {summary}", flush=True)
+        await report_complete("completed", result_summary=summary)
         print("[scrape] Done!", flush=True)
     except Exception as e:
         print(f"[scrape] FAILED: {type(e).__name__}: {e}", flush=True)
         await report_complete("failed", error_message=str(e))
+
+
+async def _crawl_text_only(crawler, urls, progress_callback=None):
+    """Visit a list of URLs and extract text only, no link discovery."""
+    import aiohttp
+
+    connector = aiohttp.TCPConnector(
+        limit=crawler.max_concurrent * 2,
+        limit_per_host=crawler.max_concurrent,
+        ttl_dns_cache=300, use_dns_cache=True,
+        enable_cleanup_closed=True, force_close=False,
+    )
+    queue = asyncio.Queue()
+    for url in urls:
+        queue.put_nowait((url, 0))
+
+    crawler.t0 = time.monotonic()
+
+    async def text_worker(session):
+        while not crawler._done:
+            try:
+                url, depth = await asyncio.wait_for(queue.get(), timeout=3.0)
+            except asyncio.TimeoutError:
+                if queue.empty():
+                    break
+                continue
+            try:
+                if crawler.fetched_count >= crawler.max_pages:
+                    crawler._done = True
+                    break
+                if crawler.delay > 0:
+                    await asyncio.sleep(random.uniform(0, crawler.delay))
+                text = await crawler._fetch(session, url)
+                crawler.fetched_count += 1
+                if text is None:
+                    continue
+                if not is_sitemap_content(text):
+                    # Extract text but don't follow links
+                    title, meta_desc, body_text = extract_page_text(text)
+                    crawler.extracted_pages[url] = {
+                        "url": url,
+                        "title": title,
+                        "meta_description": meta_desc,
+                        "body_text": body_text,
+                    }
+                    crawler.pages_crawled += 1
+            except Exception as e:
+                print(f"[scrape] Text worker exception for {url}: {type(e).__name__}: {e}")
+                crawler.error_count += 1
+            finally:
+                queue.task_done()
+
+    async with aiohttp.ClientSession(connector=connector) as session:
+        workers = [
+            asyncio.create_task(text_worker(session))
+            for _ in range(crawler.max_concurrent)
+        ]
+
+        if progress_callback:
+            async def report_loop():
+                while not crawler._done:
+                    await asyncio.sleep(3)
+                    elapsed = time.monotonic() - crawler.t0
+                    rate = crawler.fetched_count / elapsed if elapsed > 0 else 0
+                    await progress_callback({
+                        "pages_fetched": crawler.fetched_count,
+                        "pages_with_text": len(crawler.extracted_pages),
+                        "errors": crawler.error_count,
+                        "rate": f"{rate:.1f} pg/s",
+                    })
+            report_task = asyncio.create_task(report_loop())
+
+        await asyncio.gather(*workers, return_exceptions=True)
+        crawler._done = True
+
+        if progress_callback:
+            report_task.cancel()
+
+    return crawler.all_internal_links

@@ -60,6 +60,15 @@ async def execute_task(config, task_info):
             except Exception as e:
                 print(f"Link upload error: {e}")
 
+        async def upload_pages(pages):
+            try:
+                await client.post(f"{base}/api/worker-agent/task-pages", json={
+                    "task_id": task_id,
+                    "pages": pages,
+                }, headers=headers, timeout=60)
+            except Exception as e:
+                print(f"Page upload error: {e}")
+
         try:
             plugin_path = os.path.join(PLUGIN_DIR, f"{task_type}.py")
             if not os.path.exists(plugin_path):
@@ -71,7 +80,7 @@ async def execute_task(config, task_info):
             spec.loader.exec_module(module)
 
             print(f"Running plugin: {task_type} for task {task_id}")
-            await module.run(params, report_progress, report_complete, upload_links)
+            await module.run(params, report_progress, report_complete, upload_links, upload_pages)
             print(f"Plugin {task_type} completed for task {task_id}")
 
         except Exception as e:
