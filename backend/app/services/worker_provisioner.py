@@ -28,15 +28,13 @@ def _encode_file(content: str) -> str:
 
 
 def build_provision_script(control_server_url: str, worker_api_key: str) -> str:
-    # Read the actual source files so deployed code matches the expected hash
-    agent_files = {
-        "agent/__init__.py": _read_worker_file("agent/__init__.py"),
-        "agent/version.py": _read_worker_file("agent/version.py"),
-        "agent/config.py": _read_worker_file("agent/config.py"),
-        "agent/heartbeat.py": _read_worker_file("agent/heartbeat.py"),
-        "agent/main.py": _read_worker_file("agent/main.py"),
-        "agent/task_runner.py": _read_worker_file("agent/task_runner.py"),
-    }
+    # Auto-discover all .py files in agent/ so new modules are always included
+    agent_files = {}
+    agent_dir = WORKER_SOURCE_DIR / "agent"
+    if agent_dir.exists():
+        for f in agent_dir.iterdir():
+            if f.suffix == ".py":
+                agent_files[f"agent/{f.name}"] = f.read_text(encoding="utf-8")
     plugin_files = {}
     plugins_dir = WORKER_SOURCE_DIR / "plugins"
     if plugins_dir.exists():
