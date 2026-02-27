@@ -42,6 +42,10 @@ def random_headers():
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
     }
 
 
@@ -114,27 +118,33 @@ class PluginCrawler:
         path = urlparse(url).path.lower()
         return any(path.endswith(ext) for ext in SKIP_EXTENSIONS)
 
-    async def _fetch(self, session, url):
-        try:
-            async with session.get(
-                url, headers=random_headers(),
-                timeout=aiohttp.ClientTimeout(total=self.timeout),
-                allow_redirects=True, ssl=False,
-            ) as resp:
-                if resp.status == 200:
-                    ct = resp.headers.get("Content-Type", "")
-                    if "text/html" in ct or "xml" in ct or "text/plain" in ct:
-                        raw = await resp.read()
-                        return raw.decode("utf-8", errors="replace")
-                    print(f"[scrape] Skipped {url} — Content-Type: {ct}")
+    async def _fetch(self, session, url, retries=2):
+        for attempt in range(1, retries + 2):
+            try:
+                async with session.get(
+                    url, headers=random_headers(),
+                    timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    allow_redirects=True, ssl=False,
+                ) as resp:
+                    if resp.status == 200:
+                        ct = resp.headers.get("Content-Type", "")
+                        if "text/html" in ct or "xml" in ct or "text/plain" in ct:
+                            raw = await resp.read()
+                            return raw.decode("utf-8", errors="replace")
+                        print(f"[scrape] Skipped {url} — Content-Type: {ct}")
+                        return None
+                    print(f"[scrape] HTTP {resp.status} for {url}")
+                    self.error_count += 1
                     return None
-                print(f"[scrape] HTTP {resp.status} for {url}")
-                self.error_count += 1
-                return None
-        except (asyncio.TimeoutError, aiohttp.ClientError, UnicodeDecodeError) as e:
-            print(f"[scrape] Fetch error for {url}: {type(e).__name__}: {e}")
-            self.error_count += 1
-            return None
+            except (asyncio.TimeoutError, aiohttp.ClientError, UnicodeDecodeError) as e:
+                if attempt <= retries:
+                    wait = attempt * 2
+                    print(f"[scrape] Retry {attempt}/{retries} for {url} after {type(e).__name__}, waiting {wait}s")
+                    await asyncio.sleep(wait)
+                else:
+                    print(f"[scrape] Fetch failed for {url}: {type(e).__name__}: {e}")
+                    self.error_count += 1
+                    return None
 
     def _enqueue(self, queue, url, depth):
         if url not in self.queued:
@@ -250,7 +260,7 @@ async def run(params, report_progress, report_complete, upload_links):
     max_pages = params.get("max_pages", 10000)
     concurrent = params.get("concurrent", 30)
     delay = params.get("delay", 0.1)
-    timeout = params.get("timeout", 5.0)
+    timeout = params.get("timeout", 15.0)
     use_sitemap = params.get("use_sitemap", False)
 
     start_url = website_sitemap_url if (use_sitemap and website_sitemap_url) else website_url
