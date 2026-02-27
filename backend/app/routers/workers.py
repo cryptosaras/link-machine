@@ -25,7 +25,6 @@ def _worker_response(w: Worker) -> WorkerResponse:
     return WorkerResponse(
         id=str(w.id),
         name=w.name,
-        worker_type=w.worker_type,
         ssh_host=w.ssh_host,
         ssh_user=w.ssh_user,
         ssh_port=w.ssh_port,
@@ -67,7 +66,7 @@ async def create_worker(
     ssh_key_value = body.ssh_key
     ssh_password_value = body.ssh_password
 
-    if body.worker_type == "upcloud":
+    if body.use_saved_key:
         # Fetch global SSH key from settings
         result = await db.execute(
             select(Setting).where(Setting.key == "upcloud_ssh_key")
@@ -76,7 +75,7 @@ async def create_worker(
         if not setting or not setting.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="UpCloud SSH key not configured. Go to Settings first.",
+                detail="SSH key not configured in Settings.",
             )
         ssh_key_value = setting.value
         ssh_password_value = None
@@ -86,12 +85,10 @@ async def create_worker(
             detail="Either ssh_password or ssh_key is required",
         )
 
-    worker_name = body.name or f"upcloud-{body.ssh_host}"
     api_key = "wk_" + secrets.token_hex(32)
 
     worker = Worker(
-        name=worker_name,
-        worker_type=body.worker_type,
+        name=body.name,
         ssh_host=body.ssh_host,
         ssh_user=body.ssh_user,
         ssh_port=body.ssh_port,
