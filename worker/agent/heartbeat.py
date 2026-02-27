@@ -2,6 +2,7 @@ import asyncio
 import platform
 
 import httpx
+import psutil
 
 from agent.version import AGENT_CODE_HASH
 from agent.task_runner import execute_task
@@ -31,7 +32,14 @@ async def heartbeat_loop(config):
                 print("Task finished, worker idle")
 
             try:
-                stats = {"hostname": platform.node()}
+                mem = psutil.virtual_memory()
+                stats = {
+                    "hostname": platform.node(),
+                    "cpu_cores": psutil.cpu_count(logical=True),
+                    "cpu_percent": psutil.cpu_percent(interval=None),
+                    "ram_total_mb": round(mem.total / (1024 * 1024)),
+                    "ram_percent": mem.percent,
+                }
                 base = config.CONTROL_SERVER_URL.rstrip("/")
                 resp = await client.post(
                     f"{base}/api/worker-agent/heartbeat",

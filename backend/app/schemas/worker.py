@@ -34,6 +34,7 @@ class WorkerResponse(BaseModel):
     code_hash: str | None
     needs_update: bool
     current_task: WorkerCurrentTask | None = None
+    stats_history: list[dict] = []
     created_at: datetime
     updated_at: datetime
 

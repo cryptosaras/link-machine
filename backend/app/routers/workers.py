@@ -1,11 +1,14 @@
 import asyncio
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import async_session, get_db
 from app.dependencies import get_current_user
 from app.models.setting import Setting
@@ -23,7 +26,11 @@ _background_tasks: set[asyncio.Task] = set()
 HEARTBEAT_TIMEOUT = timedelta(minutes=2)
 
 
-def _worker_response(w: Worker, current_task: WorkerCurrentTask | None = None) -> WorkerResponse:
+def _worker_response(
+    w: Worker,
+    current_task: WorkerCurrentTask | None = None,
+    stats_history: list[dict] | None = None,
+) -> WorkerResponse:
     return WorkerResponse(
         id=str(w.id),
         name=w.name,
@@ -36,6 +43,7 @@ def _worker_response(w: Worker, current_task: WorkerCurrentTask | None = None) -
         code_hash=w.code_hash,
         needs_update=w.needs_update,
         current_task=current_task,
+        stats_history=stats_history or [],
         created_at=w.created_at,
         updated_at=w.updated_at,
     )
@@ -64,6 +72,20 @@ async def list_workers(
     )
     running_tasks = {t.worker_id: t for t in task_result.scalars().all()}
 
+    # Fetch stats history from Redis for all workers
+    stats_by_worker: dict[str, list[dict]] = {}
+    try:
+        r = aioredis.from_url(settings.REDIS_URL)
+        pipe = r.pipeline()
+        for w in workers:
+            pipe.lrange(f"worker-stats:{w.id}", 0, -1)
+        results = await pipe.execute()
+        await r.aclose()
+        for w, raw_list in zip(workers, results):
+            stats_by_worker[str(w.id)] = [json.loads(item) for item in raw_list]
+    except Exception:
+        pass  # Gracefully degrade if Redis unavailable
+
     responses = []
     for w in workers:
         ct = None
@@ -81,7 +103,8 @@ async def list_workers(
                 progress=task.progress or {},
                 started_at=task.started_at,
             )
-        responses.append(_worker_response(w, current_task=ct))
+        history = stats_by_worker.get(str(w.id), [])
+        responses.append(_worker_response(w, current_task=ct, stats_history=history))
 
     return responses
 

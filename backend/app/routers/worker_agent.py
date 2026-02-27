@@ -45,6 +45,27 @@ async def heartbeat(
         if body.code_hash else bool(expected_hash)
     )
 
+    # --- Store stats history in Redis ---
+    cpu_pct = body.system_stats.get("cpu_percent")
+    ram_pct = body.system_stats.get("ram_percent")
+    if cpu_pct is not None or ram_pct is not None:
+        try:
+            r = aioredis.from_url(settings.REDIS_URL)
+            stats_key = f"worker-stats:{worker.id}"
+            entry = json.dumps({
+                "cpu": cpu_pct,
+                "ram": ram_pct,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            })
+            pipe = r.pipeline()
+            pipe.rpush(stats_key, entry)
+            pipe.ltrim(stats_key, -60, -1)  # keep last 60 entries (~5 min)
+            pipe.expire(stats_key, 600)  # 10 min TTL
+            await pipe.execute()
+            await r.aclose()
+        except Exception:
+            pass  # Don't let stats storage crash heartbeat
+
     assigned_task = None
 
     # --- Recover stuck tasks from dead workers ---
