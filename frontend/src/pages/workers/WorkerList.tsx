@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Download,
+  FileText,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -115,6 +116,14 @@ export default function WorkerList() {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalWsRef = useRef<WebSocket | null>(null);
 
+  // Worker logs state
+  const [workerLogOpen, setWorkerLogOpen] = useState(false);
+  const [workerLogWorkerId, setWorkerLogWorkerId] = useState<string | null>(null);
+  const [workerLogWorkerName, setWorkerLogWorkerName] = useState("");
+  const [workerLogLines, setWorkerLogLines] = useState<string[]>([]);
+  const workerLogWsRef = useRef<WebSocket | null>(null);
+  const workerLogEndRef = useRef<HTMLDivElement>(null);
+
   // Add worker form state
   const [formName, setFormName] = useState("");
   const [formHost, setFormHost] = useState("");
@@ -149,6 +158,11 @@ export default function WorkerList() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logLines]);
+
+  // Auto-scroll worker logs
+  useEffect(() => {
+    workerLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [workerLogLines]);
 
   // Terminal setup/teardown
   const openTerminal = useCallback((workerId: string, workerName: string) => {
@@ -374,6 +388,38 @@ export default function WorkerList() {
     setLogLines([]);
     setLogDone(false);
     fetchWorkers();
+  };
+
+  const openWorkerLogs = (workerId: string, workerName: string) => {
+    setWorkerLogLines([]);
+    setWorkerLogWorkerId(workerId);
+    setWorkerLogWorkerName(workerName);
+    setWorkerLogOpen(true);
+
+    const token = localStorage.getItem("access_token");
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/worker-logs/${workerId}?token=${token}`;
+    const ws = new WebSocket(wsUrl);
+    workerLogWsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      setWorkerLogLines((prev) => [...prev, event.data]);
+    };
+
+    ws.onerror = () => {
+      setWorkerLogLines((prev) => [...prev, "[error] WebSocket connection failed"]);
+    };
+  };
+
+  const closeWorkerLogs = () => {
+    if (workerLogWsRef.current) {
+      workerLogWsRef.current.close();
+      workerLogWsRef.current = null;
+    }
+    setWorkerLogOpen(false);
+    setWorkerLogWorkerId(null);
+    setWorkerLogWorkerName("");
+    setWorkerLogLines([]);
   };
 
   const toggleSelect = (id: string) => {
@@ -640,6 +686,14 @@ export default function WorkerList() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => openWorkerLogs(w.id, w.name)}
+                        title="View logs"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => openTerminal(w.id, w.name)}
                         title="Open terminal"
                       >
@@ -753,6 +807,51 @@ export default function WorkerList() {
               <Button onClick={closeLog}>Close</Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Worker Logs Dialog */}
+      <Dialog open={workerLogOpen} onOpenChange={(open) => !open && closeWorkerLogs()}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Worker Logs — {workerLogWorkerName}</DialogTitle>
+            <DialogDescription>
+              Live output from worker process. Shows recent history and streams new lines.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 h-[28rem] overflow-y-auto rounded-md border border-[var(--border)] bg-gray-950 p-4 font-mono text-xs text-gray-300">
+            {workerLogLines.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-foreground-muted">
+                No logs yet. Waiting for worker output...
+              </div>
+            ) : (
+              workerLogLines.map((line, i) => {
+                let className = "text-gray-300";
+                if (line.startsWith("[stderr]")) {
+                  className = "text-yellow-400";
+                } else if (line.startsWith("[scrape]")) {
+                  className = "text-cyan-400";
+                } else if (line.includes("error") || line.includes("Error") || line.includes("failed")) {
+                  className = "text-red-400";
+                } else if (line.startsWith("Heartbeat OK")) {
+                  className = "text-green-500/60";
+                } else if (line.startsWith("Received task") || line.startsWith("Running plugin")) {
+                  className = "text-blue-400 font-medium";
+                } else if (line.startsWith("Task finished") || line.includes("completed")) {
+                  className = "text-green-400 font-medium";
+                }
+                return (
+                  <div key={i} className={className}>
+                    {line}
+                  </div>
+                );
+              })
+            )}
+            <div ref={workerLogEndRef} />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button onClick={closeWorkerLogs}>Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
 

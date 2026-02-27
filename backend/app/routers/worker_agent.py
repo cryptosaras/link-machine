@@ -117,6 +117,10 @@ class ScrapedLinksUpload(PydanticBaseModel):
     urls: list[str]
 
 
+class WorkerLogsUpload(PydanticBaseModel):
+    lines: list[str]
+
+
 # --------------- Helper ---------------
 
 async def _get_worker_by_auth(authorization: str, db: AsyncSession) -> Worker:
@@ -200,3 +204,34 @@ async def upload_scraped_links(
         ))
     await db.commit()
     return {"status": "ok", "count": len(body.urls)}
+
+
+WORKER_LOG_MAX = 500  # max lines kept in Redis per worker
+
+
+@router.post("/logs")
+async def upload_worker_logs(
+    body: WorkerLogsUpload,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    worker = await _get_worker_by_auth(authorization, db)
+    if not body.lines:
+        return {"status": "ok"}
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    key = f"worker-logs:{worker.id}"
+
+    pipe = r.pipeline()
+    for line in body.lines:
+        pipe.rpush(key, line)
+    pipe.ltrim(key, -WORKER_LOG_MAX, -1)
+    pipe.expire(key, 86400)  # 24h TTL
+    await pipe.execute()
+
+    # Publish for live WebSocket subscribers
+    for line in body.lines:
+        await r.publish(f"worker-logs:{worker.id}", line)
+    await r.aclose()
+
+    return {"status": "ok"}

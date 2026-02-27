@@ -5,13 +5,20 @@ import httpx
 
 from agent.version import AGENT_CODE_HASH
 from agent.task_runner import execute_task
+from agent.log_capture import LogCapture
 
 
 async def heartbeat_loop(config):
     current_task_id = None
     task_handle = None
 
+    log_capture = LogCapture()
+    log_capture.install()
+
     async with httpx.AsyncClient() as client:
+        # Start log flush loop in background
+        asyncio.create_task(log_capture.flush_loop(client, config))
+
         while True:
             # Check if running task has finished
             if task_handle is not None and task_handle.done():

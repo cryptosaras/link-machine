@@ -158,6 +158,41 @@ async def ws_terminal(
             pass
 
 
+@router.websocket("/ws/worker-logs/{worker_id}")
+async def ws_worker_logs(
+    websocket: WebSocket,
+    worker_id: str,
+    token: str = Query(...),
+):
+    if not _validate_token(token):
+        await websocket.close(code=4001)
+        return
+
+    await websocket.accept()
+
+    r = aioredis.from_url(settings.REDIS_URL)
+
+    # Send recent history first
+    key = f"worker-logs:{worker_id}"
+    history = await r.lrange(key, 0, -1)
+    for line in history:
+        await websocket.send_text(line.decode())
+
+    # Then subscribe for live updates
+    pubsub = r.pubsub()
+    await pubsub.subscribe(f"worker-logs:{worker_id}")
+
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                await websocket.send_text(message["data"].decode())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await pubsub.unsubscribe(f"worker-logs:{worker_id}")
+        await r.aclose()
+
+
 @router.websocket("/ws/task/{task_id}")
 async def ws_task_progress(
     websocket: WebSocket,
