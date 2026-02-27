@@ -29,6 +29,7 @@ export default function WebsiteList() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [sitemapUrl, setSitemapUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [scrapeOpen, setScrapeOpen] = useState(false);
@@ -54,9 +55,10 @@ export default function WebsiteList() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post("/websites", { name, url });
+      await api.post("/websites", { name, url, sitemap_url: sitemapUrl || null });
       setName("");
       setUrl("");
+      setSitemapUrl("");
       setOpen(false);
       fetchWebsites();
     } finally {
@@ -130,6 +132,15 @@ export default function WebsiteList() {
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="site-sitemap-url">Sitemap URL (optional)</Label>
+                <Input
+                  id="site-sitemap-url"
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  placeholder="https://example.com/sitemap.xml"
+                />
+              </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Adding..." : "Add Website"}
               </Button>
@@ -187,7 +198,7 @@ export default function WebsiteList() {
                           setScrapeTextOnly(false);
                           setScrapeOpen(true);
                         }}
-                        className="text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-300"
+                        className="border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10"
                       >
                         <Search className="h-3.5 w-3.5 mr-1.5" />
                         Scrape
