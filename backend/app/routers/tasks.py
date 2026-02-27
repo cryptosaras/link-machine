@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc, delete as sa_delete
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.task import Task, ScrapedLink, ScrapedPage
+from app.models.task import Task, ScrapedLink
 from app.models.user import User
 from app.models.website import Website
 from app.schemas.task import TaskCreate, TaskResponse
@@ -133,8 +133,6 @@ async def delete_task(
     task = await db.get(Task, task_id)
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    await db.execute(sa_delete(ScrapedLink).where(ScrapedLink.task_id == task.id))
-    await db.execute(sa_delete(ScrapedPage).where(ScrapedPage.task_id == task.id))
     await db.delete(task)
     await db.commit()
 
@@ -156,8 +154,6 @@ async def bulk_delete_tasks(
     if not tasks:
         raise HTTPException(status_code=404, detail="No tasks found")
     task_ids = [t.id for t in tasks]
-    await db.execute(sa_delete(ScrapedLink).where(ScrapedLink.task_id.in_(task_ids)))
-    await db.execute(sa_delete(ScrapedPage).where(ScrapedPage.task_id.in_(task_ids)))
     for t in tasks:
         await db.delete(t)
     await db.commit()
