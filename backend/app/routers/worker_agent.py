@@ -13,7 +13,7 @@ from app.models.task import ScrapedLink, Task
 from app.models.website import Website
 from app.models.worker import Worker
 from app.schemas.worker import HeartbeatRequest, HeartbeatResponse
-from app.services.worker_version import EXPECTED_WORKER_HASH
+from app.services.worker_version import get_expected_worker_hash
 
 router = APIRouter(prefix="/api/worker-agent", tags=["worker-agent"])
 
@@ -38,9 +38,10 @@ async def heartbeat(
     worker.status = "online"
     worker.system_stats = body.system_stats
     worker.code_hash = body.code_hash
+    expected_hash = get_expected_worker_hash()
     worker.needs_update = (
-        bool(EXPECTED_WORKER_HASH) and body.code_hash != EXPECTED_WORKER_HASH
-        if body.code_hash else bool(EXPECTED_WORKER_HASH)
+        bool(expected_hash) and body.code_hash != expected_hash
+        if body.code_hash else bool(expected_hash)
     )
 
     assigned_task = None
