@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ListTodo } from "lucide-react";
+import { ListTodo, RotateCcw, ExternalLink } from "lucide-react";
 import api from "@/api/client";
 
 interface Task {
@@ -51,10 +51,20 @@ function taskTypeLabel(type: string): string {
   return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function formatParamKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatParamValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
 export default function TaskList() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [links, setLinks] = useState<string[]>([]);
+  const [retrying, setRetrying] = useState(false);
   const wsRefs = useRef<Map<string, WebSocket>>(new Map());
 
   const fetchTasks = async () => {
@@ -67,6 +77,14 @@ export default function TaskList() {
     const interval = setInterval(fetchTasks, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Keep selectedTask in sync with live task data
+  useEffect(() => {
+    if (selectedTask) {
+      const updated = tasks.find((t) => t.id === selectedTask.id);
+      if (updated) setSelectedTask(updated);
+    }
+  }, [tasks]);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -136,6 +154,18 @@ export default function TaskList() {
     }
   };
 
+  const handleRetry = async () => {
+    if (!selectedTask) return;
+    setRetrying(true);
+    try {
+      await api.post(`/tasks/${selectedTask.id}/retry`);
+      await fetchTasks();
+      setLinks([]);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -182,7 +212,9 @@ export default function TaskList() {
                 <tr
                   key={task.id}
                   onClick={() => handleRowClick(task)}
-                  className="cursor-pointer bg-surface hover:bg-surface-tertiary"
+                  className={`cursor-pointer bg-surface hover:bg-surface-tertiary ${
+                    selectedTask?.id === task.id ? "ring-1 ring-inset ring-blue-500/40" : ""
+                  }`}
                 >
                   <td className="px-4 py-3 font-medium text-foreground">
                     {taskTypeLabel(task.task_type)}
@@ -217,53 +249,140 @@ export default function TaskList() {
       )}
 
       {selectedTask && (
-        <div className="rounded-lg border border-[var(--border)] bg-surface-secondary p-4 space-y-3">
+        <div className="rounded-lg border border-[var(--border)] bg-surface-secondary p-5 space-y-4">
+          {/* Header */}
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-foreground">
-              {taskTypeLabel(selectedTask.task_type)} —{" "}
-              {selectedTask.website_name}
-            </h2>
-            <button
-              onClick={() => setSelectedTask(null)}
-              className="text-foreground-muted hover:text-foreground text-sm"
-            >
-              Close
-            </button>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-foreground">
+                {taskTypeLabel(selectedTask.task_type)}
+              </h2>
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[selectedTask.status] || ""}`}
+              >
+                {selectedTask.status}
+              </span>
+              {selectedTask.website_name && (
+                <span className="text-sm text-foreground-muted">
+                  {selectedTask.website_name}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {(selectedTask.status === "failed" || selectedTask.status === "running") && (
+                <button
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {retrying ? "Retrying..." : "Retry"}
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedTask(null)}
+                className="text-foreground-muted hover:text-foreground text-sm px-2"
+              >
+                Close
+              </button>
+            </div>
           </div>
 
-          {selectedTask.result_summary && (
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              {Object.entries(selectedTask.result_summary).map(([k, v]) => (
-                <div key={k}>
-                  <span className="text-foreground-muted">
-                    {k.replace(/_/g, " ")}:
-                  </span>{" "}
-                  <span className="text-foreground font-medium">
-                    {String(v)}
-                  </span>
-                </div>
-              ))}
+          {/* Configuration params */}
+          {selectedTask.params && Object.keys(selectedTask.params).length > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-2">
+                Configuration
+              </h3>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                {Object.entries(selectedTask.params).map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-1.5">
+                    <span className="text-foreground-muted">{formatParamKey(k)}:</span>
+                    <span className="text-foreground font-medium">{formatParamValue(v)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* Live progress (when running) */}
+          {selectedTask.status === "running" && selectedTask.progress && Object.keys(selectedTask.progress).length > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-2">
+                Live Progress
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(selectedTask.progress).map(([k, v]) => (
+                  <div key={k} className="rounded bg-surface px-3 py-2">
+                    <div className="text-xs text-foreground-muted">{formatParamKey(k)}</div>
+                    <div className="text-sm font-semibold text-foreground">{String(v)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Result summary */}
+          {selectedTask.result_summary && Object.keys(selectedTask.result_summary).length > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-2">
+                Results
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(selectedTask.result_summary).map(([k, v]) => (
+                  <div key={k} className="rounded bg-surface px-3 py-2">
+                    <div className="text-xs text-foreground-muted">{formatParamKey(k)}</div>
+                    <div className="text-sm font-semibold text-foreground">{String(v)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Error message */}
           {selectedTask.error_message && (
-            <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">
-              {selectedTask.error_message}
+            <div className="rounded bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+              <span className="font-medium">Error:</span> {selectedTask.error_message}
             </div>
           )}
 
+          {/* Timing info */}
+          <div className="flex gap-6 text-xs text-foreground-muted">
+            <span>Created: {new Date(selectedTask.created_at).toLocaleString()}</span>
+            {selectedTask.started_at && (
+              <span>Started: {new Date(selectedTask.started_at).toLocaleString()}</span>
+            )}
+            {selectedTask.completed_at && (
+              <span>Completed: {new Date(selectedTask.completed_at).toLocaleString()}</span>
+            )}
+            {selectedTask.started_at && (
+              <span>Duration: {formatDuration(selectedTask.started_at, selectedTask.completed_at)}</span>
+            )}
+          </div>
+
+          {/* Scraped links */}
           {links.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-sm text-foreground-secondary font-medium">
-                Scraped Links ({links.length})
-              </p>
-              <div className="max-h-64 overflow-y-auto rounded bg-surface p-2 text-xs font-mono">
+            <div>
+              <h3 className="text-xs font-medium text-foreground-muted uppercase tracking-wide mb-2">
+                Scraped Links ({links.length.toLocaleString()})
+              </h3>
+              <div className="max-h-80 overflow-y-auto rounded bg-surface border border-[var(--border)] divide-y divide-[var(--border)]">
                 {links.map((url, i) => (
                   <div
                     key={i}
-                    className="text-foreground-secondary py-0.5 truncate"
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-surface-tertiary group"
                   >
-                    {url}
+                    <span className="text-xs text-foreground-secondary truncate flex-1 font-mono">
+                      {url}
+                    </span>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-foreground-muted hover:text-blue-400 opacity-0 group-hover:opacity-100 shrink-0"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </div>
                 ))}
               </div>

@@ -88,6 +88,29 @@ async def get_task(
     return await _task_to_response(task, db)
 
 
+@router.post("/{task_id}/retry", response_model=TaskResponse)
+async def retry_task(
+    task_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    task = await db.get(Task, task_id)
+    if not task or task.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in ("failed", "running"):
+        raise HTTPException(status_code=400, detail="Only failed or stuck tasks can be retried")
+    task.status = "pending"
+    task.worker_id = None
+    task.started_at = None
+    task.completed_at = None
+    task.progress = {}
+    task.result_summary = None
+    task.error_message = None
+    await db.commit()
+    await db.refresh(task)
+    return await _task_to_response(task, db)
+
+
 @router.get("/{task_id}/links", response_model=list[str])
 async def get_task_links(
     task_id: str,

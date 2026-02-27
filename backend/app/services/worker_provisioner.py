@@ -142,6 +142,109 @@ echo "=== Installation complete ==="
 """
 
 
+async def reset_worker_container(
+    ssh_host: str,
+    ssh_user: str,
+    ssh_port: int,
+    ssh_password: str | None,
+    ssh_key: str | None,
+    worker_id: str,
+    db_session_factory,
+):
+    """SSH into worker and restart the Docker container to clear stuck state."""
+    r = aioredis.from_url(settings.REDIS_URL)
+    log_lines: list[str] = []
+    final_status = "error"
+
+    async def publish(line: str):
+        log_lines.append(line)
+        await r.publish(f"install:{worker_id}", line)
+
+    try:
+        connect_kwargs: dict = {
+            "host": ssh_host,
+            "port": ssh_port,
+            "username": ssh_user,
+            "known_hosts": None,
+        }
+        if ssh_password:
+            connect_kwargs["password"] = ssh_password
+        if ssh_key:
+            connect_kwargs["client_keys"] = [asyncssh.import_private_key(ssh_key)]
+
+        await publish("Connecting to VPS...")
+
+        async with asyncssh.connect(**connect_kwargs) as conn:
+            await publish(f"Connected to {ssh_host} as {ssh_user}")
+            await publish("Stopping worker container...")
+
+            script = """#!/bin/bash
+set -e
+cd /opt/link-machine-worker
+
+echo "=== Stopping worker container ==="
+docker compose down --timeout 10 || true
+
+echo "=== Cleaning up stale processes ==="
+docker rm -f lm-worker 2>/dev/null || true
+
+echo "=== Starting worker container ==="
+docker compose up -d --force-recreate
+
+echo "=== Waiting for container startup ==="
+sleep 3
+
+if docker ps | grep -q lm-worker; then
+    echo "Worker container is running"
+    docker compose logs --tail 5
+else
+    echo "WARNING: Worker container may not have started properly"
+    docker compose logs --tail 20
+fi
+
+echo "=== Reset complete ==="
+"""
+            result = await conn.create_process("bash -s", input=script)
+
+            async def read_stream(stream, prefix=""):
+                async for line in stream:
+                    stripped = line.rstrip()
+                    if stripped:
+                        await publish(f"{prefix}{stripped}")
+
+            await asyncio.gather(
+                read_stream(result.stdout),
+                read_stream(result.stderr, "[stderr] "),
+            )
+            await result.wait()
+
+            if result.exit_status == 0:
+                await publish("__DONE__ Worker reset completed successfully.")
+                final_status = "offline"
+            else:
+                await publish(f"__ERROR__ Reset failed with exit code {result.exit_status}")
+                final_status = "error"
+
+    except Exception as e:
+        await publish(f"__ERROR__ Connection failed: {str(e)}")
+        final_status = "error"
+    finally:
+        try:
+            async with db_session_factory() as db:
+                db_result = await db.execute(
+                    select(Worker).where(Worker.id == worker_id)
+                )
+                worker = db_result.scalar_one_or_none()
+                if worker:
+                    worker.status = final_status
+                    worker.install_log = "\n".join(log_lines)
+                    await db.commit()
+        except Exception:
+            pass
+
+        await r.aclose()
+
+
 async def provision_worker(
     ssh_host: str,
     ssh_user: str,

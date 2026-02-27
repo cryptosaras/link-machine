@@ -183,6 +183,49 @@ async def install_worker(
     return {"status": "provisioning", "worker_id": str(worker.id)}
 
 
+@router.post("/{worker_id}/reset")
+async def reset_worker(
+    worker_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Worker).where(Worker.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
+
+    if worker.status == "provisioning":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Worker is currently being provisioned",
+        )
+
+    from app.services.worker_provisioner import reset_worker_container
+    from app.utils.encryption import decrypt
+
+    ssh_password = decrypt(worker.ssh_password_encrypted) if worker.ssh_password_encrypted else None
+    ssh_key = decrypt(worker.ssh_key_encrypted) if worker.ssh_key_encrypted else None
+
+    worker.status = "provisioning"
+    await db.commit()
+
+    task = asyncio.create_task(
+        reset_worker_container(
+            ssh_host=worker.ssh_host,
+            ssh_user=worker.ssh_user,
+            ssh_port=worker.ssh_port,
+            ssh_password=ssh_password,
+            ssh_key=ssh_key,
+            worker_id=str(worker.id),
+            db_session_factory=async_session,
+        )
+    )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return {"status": "resetting", "worker_id": str(worker.id)}
+
+
 @router.post("/batch-update")
 async def batch_update_workers(
     body: BatchUpdateRequest,

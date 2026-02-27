@@ -3,6 +3,7 @@ import {
   Download,
   Plus,
   RefreshCw,
+  RotateCcw,
   Server,
   Terminal as TerminalIcon,
   Trash2,
@@ -91,6 +92,7 @@ export default function WorkerList() {
   const [addOpen, setAddOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [logWorkerId, setLogWorkerId] = useState<string | null>(null);
+  const [logTitle, setLogTitle] = useState("Install Log");
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logDone, setLogDone] = useState(false);
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
@@ -98,6 +100,11 @@ export default function WorkerList() {
   const [updating, setUpdating] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<Worker | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Terminal drawer state
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -282,23 +289,29 @@ export default function WorkerList() {
     setFormKey("");
   };
 
-  const handleDelete = async (id: string) => {
-    await api.delete(`/workers/${id}`);
-    fetchWorkers();
+  const handleDeleteClick = (worker: Worker) => {
+    setDeleteTarget(worker);
+    setDeleteOpen(true);
   };
 
-  const handleInstall = async (workerId: string) => {
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.post(`/workers/${workerId}/install`);
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || "Install failed to start";
-      alert(msg);
-      return;
+      await api.delete(`/workers/${deleteTarget.id}`);
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      fetchWorkers();
+    } finally {
+      setDeleting(false);
     }
+  };
 
+  const openLogDialog = (workerId: string, title: string) => {
     setLogLines([]);
     setLogDone(false);
     setLogWorkerId(workerId);
+    setLogTitle(title);
     setLogOpen(true);
 
     const token = localStorage.getItem("access_token");
@@ -327,6 +340,28 @@ export default function WorkerList() {
     ws.onclose = () => {
       setLogDone(true);
     };
+  };
+
+  const handleInstall = async (workerId: string) => {
+    try {
+      await api.post(`/workers/${workerId}/install`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Install failed to start";
+      alert(msg);
+      return;
+    }
+    openLogDialog(workerId, "Install Log");
+  };
+
+  const handleReset = async (workerId: string) => {
+    try {
+      await api.post(`/workers/${workerId}/reset`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Reset failed to start";
+      alert(msg);
+      return;
+    }
+    openLogDialog(workerId, "Reset Log");
   };
 
   const closeLog = () => {
@@ -621,8 +656,17 @@ export default function WorkerList() {
                       </Button>
                       <Button
                         variant="ghost"
+                        size="sm"
+                        onClick={() => handleReset(w.id)}
+                        disabled={w.status === "provisioning"}
+                        title="Reset worker (restart container)"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
                         size="icon"
-                        onClick={() => handleDelete(w.id)}
+                        onClick={() => handleDeleteClick(w)}
                         title="Delete"
                       >
                         <Trash2 className="h-4 w-4 text-foreground-muted hover:text-red-400" />
@@ -636,13 +680,49 @@ export default function WorkerList() {
         </div>
       )}
 
-      {/* Install Log Dialog */}
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!open) { setDeleteOpen(false); setDeleteTarget(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Worker</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 space-y-4">
+            <p className="text-sm text-foreground-secondary">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.name}
+              </span>
+              ? This will remove the worker from the system. The VPS itself will not be affected, but the worker will stop receiving tasks.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => { setDeleteOpen(false); setDeleteTarget(null); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Worker"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Install / Reset Log Dialog */}
       <Dialog open={logOpen} onOpenChange={(open) => !open && closeLog()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Install Log</DialogTitle>
+            <DialogTitle>{logTitle}</DialogTitle>
             <DialogDescription>
-              Live output from worker installation.
+              Live output from worker operation.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-2 h-96 overflow-y-auto rounded-md border border-[var(--border)] bg-gray-950 p-4 font-mono text-xs text-green-400">

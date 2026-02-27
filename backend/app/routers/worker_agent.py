@@ -1,10 +1,10 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel as PydanticBaseModel
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -16,6 +16,8 @@ from app.schemas.worker import HeartbeatRequest, HeartbeatResponse
 from app.services.worker_version import EXPECTED_WORKER_HASH
 
 router = APIRouter(prefix="/api/worker-agent", tags=["worker-agent"])
+
+STALE_TASK_TIMEOUT = timedelta(minutes=3)
 
 
 @router.post("/heartbeat", response_model=HeartbeatResponse)
@@ -42,6 +44,25 @@ async def heartbeat(
     )
 
     assigned_task = None
+
+    # --- Recover stuck tasks from dead workers ---
+    cutoff = datetime.now(timezone.utc) - STALE_TASK_TIMEOUT
+    stale_result = await db.execute(
+        select(Task)
+        .join(Worker, Task.worker_id == Worker.id)
+        .where(
+            and_(
+                Task.status == "running",
+                Worker.last_heartbeat < cutoff,
+            )
+        )
+        .with_for_update(skip_locked=True)
+    )
+    for stale_task in stale_result.scalars().all():
+        stale_task.status = "pending"
+        stale_task.worker_id = None
+        stale_task.started_at = None
+        stale_task.progress = {}
 
     if body.current_task_id is None:
         task_result = await db.execute(

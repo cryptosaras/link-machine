@@ -1,6 +1,7 @@
 """
 Task runner — loads and executes plugins, reports progress to control server.
 """
+import asyncio
 import importlib.util
 import os
 
@@ -36,15 +37,19 @@ async def execute_task(config, task_info):
                 print(f"Progress report error: {e}")
 
         async def report_complete(status, result_summary=None, error_message=None):
-            try:
-                await client.post(f"{base}/api/worker-agent/task-complete", json={
-                    "task_id": task_id,
-                    "status": status,
-                    "result_summary": result_summary,
-                    "error_message": error_message,
-                }, headers=headers)
-            except Exception as e:
-                print(f"Complete report error: {e}")
+            for attempt in range(4):
+                try:
+                    await client.post(f"{base}/api/worker-agent/task-complete", json={
+                        "task_id": task_id,
+                        "status": status,
+                        "result_summary": result_summary,
+                        "error_message": error_message,
+                    }, headers=headers)
+                    return
+                except Exception as e:
+                    print(f"Complete report error (attempt {attempt + 1}): {e}")
+                    if attempt < 3:
+                        await asyncio.sleep(2 ** attempt)
 
         async def upload_links(urls):
             try:
