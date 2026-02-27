@@ -187,10 +187,9 @@ class PluginCrawler:
             norm = normalize_url(link, url)
             if not norm:
                 continue
-            if self._is_internal(norm):
+            if self._is_internal(norm) and not self._skip_extension(norm):
                 self.all_internal_links.add(norm)
-                if not self._skip_extension(norm):
-                    self._enqueue(queue, norm, depth + 1)
+                self._enqueue(queue, norm, depth + 1)
         self.sitemaps_processed += 1
 
     def _process_html(self, queue, url, text, depth):
@@ -199,10 +198,11 @@ class PluginCrawler:
         for link in html_links:
             if not self._is_internal(link):
                 continue
+            if self._skip_extension(link):
+                continue
             self.all_internal_links.add(link)
-            if not self._skip_extension(link):
-                if self.max_depth == 0 or depth < self.max_depth:
-                    self._enqueue(queue, link, depth + 1)
+            if self.max_depth == 0 or depth < self.max_depth:
+                self._enqueue(queue, link, depth + 1)
         self.pages_crawled += 1
 
     async def crawl(self, progress_callback=None):
