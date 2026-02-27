@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Globe, Plus, Search, Trash2 } from "lucide-react";
+import { Globe, Link, Plus, Search, Trash2 } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ interface Website {
   name: string;
   url: string;
   sitemap_url: string | null;
+  links_count: number;
   created_at: string;
 }
 
@@ -144,6 +145,7 @@ export default function WebsiteList() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Name</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">URL</th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Links</th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">Added</th>
                 <th className="px-4 py-3 text-right font-medium text-foreground-secondary">Actions</th>
               </tr>
@@ -153,6 +155,12 @@ export default function WebsiteList() {
                 <tr key={site.id} className="bg-surface hover:bg-surface-tertiary">
                   <td className="px-4 py-3 font-medium text-foreground">{site.name}</td>
                   <td className="px-4 py-3 text-foreground-secondary">{site.url}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-foreground-secondary">
+                      <Link className="h-3.5 w-3.5 text-foreground-muted" />
+                      {site.links_count.toLocaleString()}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-foreground-muted">
                     {new Date(site.created_at).toLocaleDateString()}
                   </td>
