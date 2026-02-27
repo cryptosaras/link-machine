@@ -26,6 +26,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
+interface WorkerCurrentTask {
+  id: string;
+  task_type: string;
+  status: string;
+  website_name: string | null;
+  progress: Record<string, unknown>;
+  started_at: string | null;
+}
+
 interface Worker {
   id: string;
   name: string;
@@ -37,6 +46,7 @@ interface Worker {
   system_stats: Record<string, unknown>;
   code_hash: string | null;
   needs_update: boolean;
+  current_task: WorkerCurrentTask | null;
   created_at: string;
   api_key?: string;
 }
@@ -638,6 +648,9 @@ export default function WorkerList() {
                   Version
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
+                  Current Task
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Last Heartbeat
                 </th>
                 <th className="px-4 py-3 text-right font-medium text-foreground-secondary">
@@ -677,6 +690,32 @@ export default function WorkerList() {
                       codeHash={w.code_hash}
                       needsUpdate={w.needs_update}
                     />
+                  </td>
+                  <td className="px-4 py-3">
+                    {w.current_task ? (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                          <span className="text-xs font-medium text-foreground">
+                            {w.current_task.task_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                          </span>
+                          {w.current_task.website_name && (
+                            <span className="text-xs text-foreground-muted">
+                              — {w.current_task.website_name}
+                            </span>
+                          )}
+                        </div>
+                        {w.current_task.progress && Object.keys(w.current_task.progress).length > 0 && (
+                          <span className="text-[10px] text-foreground-muted">
+                            {w.current_task.progress.pages_fetched !== undefined && `${w.current_task.progress.pages_fetched} pages`}
+                            {w.current_task.progress.links_found !== undefined && ` · ${w.current_task.progress.links_found} links`}
+                            {w.current_task.progress.rate !== undefined && ` · ${w.current_task.progress.rate}`}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-foreground-muted">Idle</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-foreground-muted">
                     {formatTimeAgo(w.last_heartbeat)}

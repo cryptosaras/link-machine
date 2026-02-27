@@ -10,8 +10,10 @@ from app.database import async_session, get_db
 from app.dependencies import get_current_user
 from app.models.setting import Setting
 from app.models.user import User
+from app.models.task import Task
+from app.models.website import Website
 from app.models.worker import Worker
-from app.schemas.worker import BatchUpdateRequest, WorkerCreate, WorkerCreateResponse, WorkerResponse
+from app.schemas.worker import BatchUpdateRequest, WorkerCreate, WorkerCreateResponse, WorkerCurrentTask, WorkerResponse
 from app.utils.encryption import encrypt
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
@@ -21,7 +23,7 @@ _background_tasks: set[asyncio.Task] = set()
 HEARTBEAT_TIMEOUT = timedelta(minutes=2)
 
 
-def _worker_response(w: Worker) -> WorkerResponse:
+def _worker_response(w: Worker, current_task: WorkerCurrentTask | None = None) -> WorkerResponse:
     return WorkerResponse(
         id=str(w.id),
         name=w.name,
@@ -33,6 +35,7 @@ def _worker_response(w: Worker) -> WorkerResponse:
         system_stats=w.system_stats or {},
         code_hash=w.code_hash,
         needs_update=w.needs_update,
+        current_task=current_task,
         created_at=w.created_at,
         updated_at=w.updated_at,
     )
@@ -54,7 +57,33 @@ async def list_workers(
             w.status = "offline"
     await db.commit()
 
-    return [_worker_response(w) for w in workers]
+    # Fetch running tasks for all workers in one query
+    worker_ids = [w.id for w in workers]
+    task_result = await db.execute(
+        select(Task).where(Task.worker_id.in_(worker_ids), Task.status == "running")
+    )
+    running_tasks = {t.worker_id: t for t in task_result.scalars().all()}
+
+    responses = []
+    for w in workers:
+        ct = None
+        task = running_tasks.get(w.id)
+        if task:
+            website_name = None
+            if task.website_id:
+                website = await db.get(Website, task.website_id)
+                website_name = website.name if website else None
+            ct = WorkerCurrentTask(
+                id=str(task.id),
+                task_type=task.task_type,
+                status=task.status,
+                website_name=website_name,
+                progress=task.progress or {},
+                started_at=task.started_at,
+            )
+        responses.append(_worker_response(w, current_task=ct))
+
+    return responses
 
 
 @router.post("", response_model=WorkerCreateResponse, status_code=status.HTTP_201_CREATED)

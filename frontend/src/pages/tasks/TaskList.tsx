@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ListTodo, RotateCcw, ExternalLink } from "lucide-react";
+import { ListTodo, RotateCcw, ExternalLink, Trash2 } from "lucide-react";
 import api from "@/api/client";
 
 interface Task {
@@ -65,6 +65,8 @@ export default function TaskList() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [links, setLinks] = useState<string[]>([]);
   const [retrying, setRetrying] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const wsRefs = useRef<Map<string, WebSocket>>(new Map());
 
   const fetchTasks = async () => {
@@ -166,10 +168,72 @@ export default function TaskList() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === tasks.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(tasks.map((t) => t.id)));
+    }
+  };
+
+  const handleDeleteOne = async (taskId: string) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/tasks/${taskId}`);
+      if (selectedTask?.id === taskId) {
+        setSelectedTask(null);
+        setLinks([]);
+      }
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+      await fetchTasks();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selected.size === 0) return;
+    setDeleting(true);
+    try {
+      await api.post("/tasks/bulk-delete", { task_ids: Array.from(selected) });
+      if (selectedTask && selected.has(selectedTask.id)) {
+        setSelectedTask(null);
+        setLinks([]);
+      }
+      setSelected(new Set());
+      await fetchTasks();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Tasks</h1>
+        {selected.size > 0 && (
+          <button
+            onClick={handleDeleteSelected}
+            disabled={deleting}
+            className="flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete {selected.size} selected
+          </button>
+        )}
       </div>
 
       {tasks.length === 0 ? (
@@ -184,6 +248,14 @@ export default function TaskList() {
           <table className="w-full text-sm">
             <thead className="border-b border-[var(--border)] bg-surface-secondary">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={tasks.length > 0 && selected.size === tasks.length}
+                    onChange={toggleAll}
+                    className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Type
                 </th>
@@ -205,6 +277,7 @@ export default function TaskList() {
                 <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
                   Created
                 </th>
+                <th className="w-10 px-3 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
@@ -216,6 +289,14 @@ export default function TaskList() {
                     selectedTask?.id === task.id ? "ring-1 ring-inset ring-blue-500/40" : ""
                   }`}
                 >
+                  <td className="w-10 px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(task.id)}
+                      onChange={() => toggleSelect(task.id)}
+                      className="h-3.5 w-3.5 rounded border-gray-600 bg-transparent text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-4 py-3 font-medium text-foreground">
                     {taskTypeLabel(task.task_type)}
                   </td>
@@ -240,6 +321,19 @@ export default function TaskList() {
                   </td>
                   <td className="px-4 py-3 text-foreground-muted text-xs">
                     {new Date(task.created_at).toLocaleString()}
+                  </td>
+                  <td
+                    className="w-10 px-3 py-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => handleDeleteOne(task.id)}
+                      disabled={deleting}
+                      className="text-foreground-muted hover:text-red-400 disabled:opacity-50"
+                      title="Delete task"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -278,6 +372,14 @@ export default function TaskList() {
                   {retrying ? "Retrying..." : "Retry"}
                 </button>
               )}
+              <button
+                onClick={() => handleDeleteOne(selectedTask.id)}
+                disabled={deleting}
+                className="flex items-center gap-1.5 rounded-md bg-red-600/20 text-red-400 px-3 py-1.5 text-xs font-medium hover:bg-red-600/30 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
               <button
                 onClick={() => setSelectedTask(null)}
                 className="text-foreground-muted hover:text-foreground text-sm px-2"

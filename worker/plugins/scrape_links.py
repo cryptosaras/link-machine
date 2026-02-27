@@ -163,6 +163,7 @@ class PluginCrawler:
                 continue
             try:
                 if self.fetched_count >= self.max_pages:
+                    self._done = True
                     queue.task_done()
                     break
                 if self.delay > 0:
@@ -239,15 +240,13 @@ class PluginCrawler:
                         })
                 report_task = asyncio.create_task(report_loop())
 
-            await queue.join()
+            # Wait for workers to finish (not queue.join — workers may stop
+            # before queue is drained when max_pages is reached)
+            await asyncio.gather(*workers, return_exceptions=True)
             self._done = True
 
             if progress_callback:
                 report_task.cancel()
-
-            for w in workers:
-                w.cancel()
-            await asyncio.gather(*workers, return_exceptions=True)
 
         return self.all_internal_links
 

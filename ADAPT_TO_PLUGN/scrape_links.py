@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Fast async internal link scraper.
+Fast async internal link scraper with link type classification.
 Uses aiohttp + selectolax for maximum speed.
 Queue-based worker pool: workers pull URLs from queue, fetch, parse,
 and push newly discovered links back into the queue.
 
-Collects ALL unique internal <a href> links found across every crawled page.
+Each link is classified by type (product, post, page, category, etc.)
+based on sitemap source and URL patterns.
 
 Usage:
     python scrape_links.py https://example.com
@@ -15,10 +16,12 @@ Usage:
 
 import argparse
 import asyncio
+import csv
 import random
 import re
 import sys
 import time
+from collections import Counter
 from urllib.parse import urljoin, urlparse, urlunparse, parse_qs, urlencode
 
 import aiohttp
@@ -46,6 +49,30 @@ SKIP_EXTENSIONS = frozenset((
     ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     ".rss", ".atom",
 ))
+
+# Sitemap filename patterns → link type
+SITEMAP_TYPE_PATTERNS = [
+    (re.compile(r"product-sitemap", re.IGNORECASE), "product"),
+    (re.compile(r"post-sitemap", re.IGNORECASE), "post"),
+    (re.compile(r"page-sitemap", re.IGNORECASE), "page"),
+    (re.compile(r"category-sitemap", re.IGNORECASE), "category"),
+    (re.compile(r"local-sitemap", re.IGNORECASE), "local"),
+    (re.compile(r"tag-sitemap", re.IGNORECASE), "tag"),
+    (re.compile(r"author-sitemap", re.IGNORECASE), "author"),
+]
+
+# URL path patterns for inferring type when not from sitemap
+URL_TYPE_PATTERNS = [
+    (re.compile(r"/produkto-kategorija/|/product-category/|/kategoria/"), "category"),
+    (re.compile(r"/category/|/kategorija/"), "category"),
+    (re.compile(r"/tag/|/tags/"), "tag"),
+    (re.compile(r"/product/|/shop/|/produktas/"), "product"),
+    (re.compile(r"/blog/|/post/|/news/|/naujienos/"), "post"),
+    (re.compile(r"/author/|/autorius/"), "author"),
+    (re.compile(r"/cart|/krepselis|/checkout|/atsiskaitymas"), "shop-page"),
+    (re.compile(r"/my-account|/paskyra|/wishlist|/palyginimas"), "shop-page"),
+    (re.compile(r"\.(kml|xml)$"), "data"),
+]
 
 
 def random_headers() -> dict[str, str]:
@@ -83,7 +110,6 @@ def normalize_url(url: str, base_url: str) -> str | None:
 
 
 def is_sitemap_content(text: str) -> bool:
-    # Check more of the document in case there's a long XML preamble/stylesheet
     start = text[:4000]
     return "<urlset" in start or "<sitemapindex" in start
 
@@ -102,6 +128,30 @@ def extract_html_links(html: str, page_url: str) -> set[str]:
             if norm:
                 links.add(norm)
     return links
+
+
+def type_from_sitemap_url(sitemap_url: str) -> str:
+    """Infer link type from the sitemap filename."""
+    filename = urlparse(sitemap_url).path.split("/")[-1].lower()
+    for pattern, link_type in SITEMAP_TYPE_PATTERNS:
+        if pattern.search(filename):
+            return link_type
+    return "other"
+
+
+def type_from_url_path(url: str) -> str:
+    """Infer link type from URL path patterns."""
+    path = urlparse(url).path.lower()
+    for pattern, link_type in URL_TYPE_PATTERNS:
+        if pattern.search(path):
+            return link_type
+    # Heuristic: deep paths with many segments are likely products
+    segments = [s for s in path.split("/") if s]
+    if len(segments) >= 3:
+        return "product"
+    if len(segments) == 0 or path == "/":
+        return "page"
+    return "other"
 
 
 class Crawler:
@@ -127,15 +177,14 @@ class Crawler:
 
         # Dedup: URLs already queued for fetching
         self.queued: set[str] = set()
-        # ALL internal links discovered (the output)
-        self.all_internal_links: set[str] = set()
+        # ALL internal links: url -> type
+        self.all_internal_links: dict[str, str] = {}
         # Counters
         self.pages_crawled = 0
         self.sitemaps_processed = 0
         self.fetched_count = 0
         self.error_count = 0
         self.t0 = 0.0
-        # Shutdown flag
         self._done = False
 
     def _is_internal(self, url: str) -> bool:
@@ -146,20 +195,63 @@ class Crawler:
         path = urlparse(url).path.lower()
         return any(path.endswith(ext) for ext in SKIP_EXTENSIONS)
 
+    def _set_link_type(self, url: str, link_type: str):
+        """Set link type. Sitemap-derived types take priority over inferred ones."""
+        existing = self.all_internal_links.get(url)
+        if existing is None or existing == "other":
+            self.all_internal_links[url] = link_type
+
     async def _fetch(self, session: aiohttp.ClientSession, url: str) -> str | None:
+        """Fetch URL with streaming — keeps partial HTML on timeout instead of discarding."""
         try:
+            # Connection timeout is short (fail fast if server unreachable).
+            # Body reading uses our own deadline so we keep partial data.
             async with session.get(
                 url,
                 headers=random_headers(),
-                timeout=aiohttp.ClientTimeout(total=self.timeout),
+                timeout=aiohttp.ClientTimeout(
+                    sock_connect=min(self.timeout, 10),
+                    sock_read=None,       # we handle read timeout ourselves
+                    total=None,
+                ),
                 allow_redirects=True,
                 ssl=False,
             ) as resp:
                 if resp.status == 200:
                     ct = resp.headers.get("Content-Type", "")
                     if "text/html" in ct or "xml" in ct or "text/plain" in ct:
-                        raw = await resp.read()
-                        return raw.decode("utf-8", errors="replace")
+                        # Stream body with deadline — keep whatever we got
+                        chunks = bytearray()
+                        partial = False
+                        deadline = asyncio.get_event_loop().time() + self.timeout
+                        try:
+                            while True:
+                                remaining = deadline - asyncio.get_event_loop().time()
+                                if remaining <= 0:
+                                    partial = True
+                                    break
+                                chunk = await asyncio.wait_for(
+                                    resp.content.readany(), timeout=remaining
+                                )
+                                if not chunk:
+                                    break  # EOF — full body received
+                                chunks.extend(chunk)
+                        except (asyncio.TimeoutError, TimeoutError):
+                            partial = True
+
+                        if not chunks:
+                            if self.verbose:
+                                print(f"  [empty] {url}", flush=True)
+                            self.error_count += 1
+                            return None
+
+                        if partial and self.verbose:
+                            print(
+                                f"  [partial] {len(chunks)} bytes before timeout: {url}",
+                                flush=True,
+                            )
+                        return bytes(chunks).decode("utf-8", errors="replace")
+
                     if self.verbose:
                         print(f"  [skip] non-html ({ct[:40]}) {url}", flush=True)
                     return None
@@ -168,8 +260,9 @@ class Crawler:
                 self.error_count += 1
                 return None
         except asyncio.TimeoutError:
+            # Connection timeout — server didn't respond at all
             if self.verbose:
-                print(f"  [timeout] {url}", flush=True)
+                print(f"  [connect timeout] {url}", flush=True)
             self.error_count += 1
             return None
         except (aiohttp.ClientError, UnicodeDecodeError) as e:
@@ -179,7 +272,6 @@ class Crawler:
             return None
 
     def _enqueue(self, queue: asyncio.Queue, url: str, depth: int) -> bool:
-        """Add URL to crawl queue if not already queued. Returns True if added."""
         if url not in self.queued:
             self.queued.add(url)
             queue.put_nowait((url, depth))
@@ -187,12 +279,10 @@ class Crawler:
         return False
 
     async def _worker(self, worker_id: int, queue: asyncio.Queue, session: aiohttp.ClientSession):
-        """Worker coroutine: pulls URLs from queue, fetches, parses, pushes new URLs."""
         while not self._done:
             try:
                 url, depth = await asyncio.wait_for(queue.get(), timeout=3.0)
             except asyncio.TimeoutError:
-                # No work available for 3s — check if we should stop
                 if queue.empty():
                     break
                 continue
@@ -224,46 +314,52 @@ class Crawler:
                 queue.task_done()
 
     def _process_sitemap(self, queue: asyncio.Queue, url: str, text: str, depth: int):
-        """Process a sitemap/sitemap-index XML document."""
         raw_urls = extract_sitemap_urls(text)
         queued_count = 0
+        sitemap_type = type_from_sitemap_url(url)
 
         for link in raw_urls:
             norm = normalize_url(link, url)
             if not norm:
                 continue
             if self._is_internal(norm):
-                # Every URL from sitemap is an internal link we discovered
-                self.all_internal_links.add(norm)
-                # Queue for crawling (could be another sitemap or an HTML page)
-                if not self._skip_extension(norm):
+                # Check if child URL is itself a sitemap (ends with .xml)
+                if norm.endswith(".xml"):
+                    # It's a child sitemap reference, queue it
                     if self._enqueue(queue, norm, depth + 1):
                         queued_count += 1
+                else:
+                    # It's a content URL — tag with type from parent sitemap
+                    self._set_link_type(norm, sitemap_type)
+                    if not self._skip_extension(norm):
+                        if self._enqueue(queue, norm, depth + 1):
+                            queued_count += 1
 
         self.sitemaps_processed += 1
         print(
             f"[sitemap #{self.sitemaps_processed}] {url} "
-            f"-> {len(raw_urls)} URLs found, {queued_count} new queued "
+            f"-> {len(raw_urls)} URLs ({sitemap_type}), {queued_count} new queued "
             f"(queue size: {queue.qsize()})",
             flush=True,
         )
 
     def _process_html(self, queue: asyncio.Queue, url: str, text: str, depth: int):
-        """Process an HTML page — extract all internal links."""
         html_links = extract_html_links(text, url)
         internal_count = 0
         new_queued = 0
 
-        # The page itself is an internal link
-        self.all_internal_links.add(url)
+        # The page itself
+        if url not in self.all_internal_links:
+            self._set_link_type(url, type_from_url_path(url))
 
         for link in html_links:
             if not self._is_internal(link):
                 continue
             internal_count += 1
-            # Add EVERY internal link to our results
-            self.all_internal_links.add(link)
-            # Queue for further crawling if within depth and not a binary file
+            # Add link — only infer type if not already known from sitemap
+            if link not in self.all_internal_links:
+                self._set_link_type(link, type_from_url_path(link))
+            # Queue for crawling
             if not self._skip_extension(link):
                 if self.max_depth == 0 or depth < self.max_depth:
                     if self._enqueue(queue, link, depth + 1):
@@ -272,7 +368,7 @@ class Crawler:
         self.pages_crawled += 1
         elapsed = time.monotonic() - self.t0
         rate = self.fetched_count / elapsed if elapsed > 0 else 0
-        if self.verbose or self.pages_crawled % 50 == 0:
+        if self.verbose or self.pages_crawled % 100 == 0:
             print(
                 f"[page:{self.pages_crawled} | links:{len(self.all_internal_links)} | "
                 f"fetched:{self.fetched_count} | {rate:.1f} pg/s] {url} "
@@ -280,7 +376,7 @@ class Crawler:
                 flush=True,
             )
 
-    async def crawl(self) -> set[str]:
+    async def crawl(self) -> dict[str, str]:
         connector = aiohttp.TCPConnector(
             limit=self.max_concurrent * 2,
             limit_per_host=self.max_concurrent,
@@ -295,18 +391,12 @@ class Crawler:
         self.t0 = time.monotonic()
 
         async with aiohttp.ClientSession(connector=connector) as session:
-            # Spawn workers
             workers = [
                 asyncio.create_task(self._worker(i, queue, session))
                 for i in range(self.max_concurrent)
             ]
-
-            # Wait until queue is fully drained (all items processed)
             await queue.join()
-
-            # Signal workers to stop
             self._done = True
-            # Cancel any workers still waiting on queue.get()
             for w in workers:
                 w.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
@@ -316,12 +406,12 @@ class Crawler:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fast async internal link scraper (supports HTML + sitemaps)",
+        description="Fast async internal link scraper with type classification",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 examples:
   python scrape_links.py https://example.com
-  python scrape_links.py https://example.com/sitemap.xml
+  python scrape_links.py https://example.com/sitemap_index.xml
   python scrape_links.py https://example.com --depth 3
   python scrape_links.py https://example.com --depth 0 --concurrent 50
         """,
@@ -349,7 +439,7 @@ examples:
     )
     parser.add_argument(
         "--output", "-o", type=str, default=None,
-        help="Save results to file (one URL per line)",
+        help="Save results to CSV file (url,type)",
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true",
@@ -384,6 +474,9 @@ examples:
     links = asyncio.run(crawler.crawl())
     elapsed = time.monotonic() - t_start
 
+    # Count by type
+    type_counts = Counter(links.values())
+
     print("\n" + "=" * 70)
     print(f"DONE in {elapsed:.2f}s")
     print(f"Pages fetched: {crawler.fetched_count}")
@@ -393,17 +486,30 @@ examples:
     print(f"Errors: {crawler.error_count}")
     if elapsed > 0:
         print(f"Speed: {crawler.fetched_count / elapsed:.1f} pages/sec")
+    print()
+    print("Links by type:")
+    for link_type, count in type_counts.most_common():
+        print(f"  {link_type:>12}: {count}")
     print("=" * 70)
 
     if args.output:
-        with open(args.output, "w") as f:
-            for link in sorted(links):
-                f.write(link + "\n")
+        with open(args.output, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["url", "type"])
+            for url, link_type in sorted(links.items()):
+                writer.writerow([url, link_type])
         print(f"Saved {len(links)} links to: {args.output}")
     else:
-        print(f"\nAll {len(links)} internal links:")
-        for link in sorted(links):
-            print(f"  {link}")
+        # Print grouped by type
+        by_type: dict[str, list[str]] = {}
+        for url, link_type in links.items():
+            by_type.setdefault(link_type, []).append(url)
+
+        for link_type in sorted(by_type):
+            urls = sorted(by_type[link_type])
+            print(f"\n--- {link_type.upper()} ({len(urls)}) ---")
+            for url in urls:
+                print(f"  {url}")
 
 
 if __name__ == "__main__":

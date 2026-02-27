@@ -13,6 +13,15 @@ class WorkerCreate(BaseModel):
     use_saved_key: bool = False
 
 
+class WorkerCurrentTask(BaseModel):
+    id: str
+    task_type: str
+    status: str
+    website_name: str | None = None
+    progress: dict = {}
+    started_at: datetime | None = None
+
+
 class WorkerResponse(BaseModel):
     id: str
     name: str
@@ -24,6 +33,7 @@ class WorkerResponse(BaseModel):
     system_stats: dict
     code_hash: str | None
     needs_update: bool
+    current_task: WorkerCurrentTask | None = None
     created_at: datetime
     updated_at: datetime
 
