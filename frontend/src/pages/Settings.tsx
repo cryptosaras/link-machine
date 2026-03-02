@@ -9,8 +9,12 @@ export default function SettingsPage() {
   const [controlUrl, setControlUrl] = useState("");
   const [sshKey, setSshKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
+  const [unsplashAppId, setUnsplashAppId] = useState("");
+  const [unsplashAccessKey, setUnsplashAccessKey] = useState("");
+  const [unsplashSecretKey, setUnsplashSecretKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
+  const [showUnsplashSecret, setShowUnsplashSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -27,6 +31,18 @@ export default function SettingsPage() {
       .get("/settings/openrouter_api_key")
       .then((r) => setOpenrouterKey(r.data.value))
       .catch(() => {});
+    api
+      .get("/settings/unsplash_app_id")
+      .then((r) => setUnsplashAppId(r.data.value))
+      .catch(() => {});
+    api
+      .get("/settings/unsplash_access_key")
+      .then((r) => setUnsplashAccessKey(r.data.value))
+      .catch(() => {});
+    api
+      .get("/settings/unsplash_secret_key")
+      .then((r) => setUnsplashSecretKey(r.data.value))
+      .catch(() => {});
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -38,6 +54,9 @@ export default function SettingsPage() {
         api.put("/settings/control_server_url", { value: controlUrl }),
         api.put("/settings/upcloud_ssh_key", { value: sshKey }),
         api.put("/settings/openrouter_api_key", { value: openrouterKey }),
+        api.put("/settings/unsplash_app_id", { value: unsplashAppId }),
+        api.put("/settings/unsplash_access_key", { value: unsplashAccessKey }),
+        api.put("/settings/unsplash_secret_key", { value: unsplashSecretKey }),
       ]);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -138,6 +157,69 @@ export default function SettingsPage() {
                 openrouter.ai/keys
               </a>
             </p>
+          </div>
+
+          {/* Unsplash API */}
+          <div className="border-t border-[var(--border)] pt-5">
+            <h2 className="text-sm font-semibold text-foreground mb-4">Unsplash API</h2>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="unsplash-app-id">Application ID</Label>
+                <Input
+                  id="unsplash-app-id"
+                  value={unsplashAppId}
+                  onChange={(e) => setUnsplashAppId(e.target.value)}
+                  placeholder="123456"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="unsplash-access-key">Access Key</Label>
+                <Input
+                  id="unsplash-access-key"
+                  value={unsplashAccessKey}
+                  onChange={(e) => setUnsplashAccessKey(e.target.value)}
+                  placeholder="your-access-key"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="unsplash-secret-key">Secret Key</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowUnsplashSecret(!showUnsplashSecret)}
+                    className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground-secondary"
+                  >
+                    {showUnsplashSecret ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                    {showUnsplashSecret ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <Input
+                  id="unsplash-secret-key"
+                  type={showUnsplashSecret ? "text" : "password"}
+                  value={unsplashSecretKey}
+                  onChange={(e) => setUnsplashSecretKey(e.target.value)}
+                  placeholder="your-secret-key"
+                />
+              </div>
+
+              <p className="text-xs text-foreground-muted">
+                Get your Unsplash API credentials at{" "}
+                <a
+                  href="https://unsplash.com/developers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline"
+                >
+                  unsplash.com/developers
+                </a>
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
