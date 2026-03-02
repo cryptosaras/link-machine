@@ -17,6 +17,7 @@ ALLOWED_SETTINGS = {
     "unsplash_app_id",
     "unsplash_access_key",
     "unsplash_secret_key",
+    "pexels_api_key",
 }
 
 

@@ -12,9 +12,11 @@ export default function SettingsPage() {
   const [unsplashAppId, setUnsplashAppId] = useState("");
   const [unsplashAccessKey, setUnsplashAccessKey] = useState("");
   const [unsplashSecretKey, setUnsplashSecretKey] = useState("");
+  const [pexelsKey, setPexelsKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
   const [showUnsplashSecret, setShowUnsplashSecret] = useState(false);
+  const [showPexelsKey, setShowPexelsKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -43,6 +45,10 @@ export default function SettingsPage() {
       .get("/settings/unsplash_secret_key")
       .then((r) => setUnsplashSecretKey(r.data.value))
       .catch(() => {});
+    api
+      .get("/settings/pexels_api_key")
+      .then((r) => setPexelsKey(r.data.value))
+      .catch(() => {});
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -57,6 +63,7 @@ export default function SettingsPage() {
         api.put("/settings/unsplash_app_id", { value: unsplashAppId }),
         api.put("/settings/unsplash_access_key", { value: unsplashAccessKey }),
         api.put("/settings/unsplash_secret_key", { value: unsplashSecretKey }),
+        api.put("/settings/pexels_api_key", { value: pexelsKey }),
       ]);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -217,6 +224,48 @@ export default function SettingsPage() {
                   className="text-blue-400 hover:underline"
                 >
                   unsplash.com/developers
+                </a>
+              </p>
+            </div>
+          </div>
+
+          {/* Pexels API */}
+          <div className="border-t border-[var(--border)] pt-5">
+            <h2 className="text-sm font-semibold text-foreground mb-4">Pexels API</h2>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="pexels-key">API Key</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPexelsKey(!showPexelsKey)}
+                    className="flex items-center gap-1 text-xs text-foreground-muted hover:text-foreground-secondary"
+                  >
+                    {showPexelsKey ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                    {showPexelsKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+                <Input
+                  id="pexels-key"
+                  type={showPexelsKey ? "text" : "password"}
+                  value={pexelsKey}
+                  onChange={(e) => setPexelsKey(e.target.value)}
+                  placeholder="your-pexels-api-key"
+                />
+              </div>
+              <p className="text-xs text-foreground-muted">
+                Get your Pexels API key at{" "}
+                <a
+                  href="https://www.pexels.com/api/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline"
+                >
+                  pexels.com/api
                 </a>
               </p>
             </div>
