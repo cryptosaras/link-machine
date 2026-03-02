@@ -10,7 +10,7 @@ from app.schemas.setting import SettingResponse, SettingUpdate
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-ALLOWED_SETTINGS = {"control_server_url", "upcloud_ssh_key"}
+ALLOWED_SETTINGS = {"control_server_url", "upcloud_ssh_key", "openrouter_api_key"}
 
 
 @router.get("/{key}", response_model=SettingResponse)
