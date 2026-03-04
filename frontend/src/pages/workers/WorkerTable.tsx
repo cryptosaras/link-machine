@@ -1,6 +1,7 @@
 import {
   Download,
   FileText,
+  KeyRound,
   RotateCcw,
   Terminal as TerminalIcon,
   Trash2,
@@ -55,6 +56,7 @@ interface WorkerTableProps {
   onDelete: (worker: Worker) => void;
   onOpenTerminal: (workerId: string, workerName: string) => void;
   onOpenLogs: (workerId: string, workerName: string) => void;
+  onShowLogin: (worker: Worker) => void;
 }
 
 export default function WorkerTable({
@@ -67,6 +69,7 @@ export default function WorkerTable({
   onDelete,
   onOpenTerminal,
   onOpenLogs,
+  onShowLogin,
 }: WorkerTableProps) {
   return (
     <div className="overflow-hidden rounded-lg border border-[var(--border)]">
@@ -219,6 +222,14 @@ export default function WorkerTable({
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onShowLogin(w)}
+                      title="Login details"
+                    >
+                      <KeyRound className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

@@ -16,8 +16,8 @@ from app.models.user import User
 from app.models.task import Task
 from app.models.website import Website
 from app.models.worker import Worker
-from app.schemas.worker import BatchUpdateRequest, WorkerCreate, WorkerCreateResponse, WorkerCurrentTask, WorkerResponse
-from app.utils.encryption import encrypt
+from app.schemas.worker import BatchUpdateRequest, WorkerCreate, WorkerCreateResponse, WorkerCredentialsResponse, WorkerCurrentTask, WorkerResponse
+from app.utils.encryption import decrypt, encrypt
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
 
@@ -154,6 +154,30 @@ async def create_worker(
 
     resp = _worker_response(worker)
     return WorkerCreateResponse(**resp.model_dump(), api_key=api_key)
+
+
+@router.get("/{worker_id}/credentials", response_model=WorkerCredentialsResponse)
+async def get_worker_credentials(
+    worker_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Worker).where(Worker.id == worker_id))
+    worker = result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
+
+    ssh_password = decrypt(worker.ssh_password_encrypted) if worker.ssh_password_encrypted else None
+    ssh_key = decrypt(worker.ssh_key_encrypted) if worker.ssh_key_encrypted else None
+
+    return WorkerCredentialsResponse(
+        ssh_host=worker.ssh_host,
+        ssh_user=worker.ssh_user,
+        ssh_port=worker.ssh_port,
+        ssh_password=ssh_password,
+        ssh_key=ssh_key,
+        api_key=worker.api_key,
+    )
 
 
 @router.delete("/{worker_id}", status_code=status.HTTP_204_NO_CONTENT)

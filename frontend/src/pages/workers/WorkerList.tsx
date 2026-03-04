@@ -10,6 +10,7 @@ import {
   ApiKeyBanner,
   DeleteWorkerDialog,
   LogDialog,
+  LoginDetailsDialog,
   WorkerLogDialog,
 } from "./WorkerDialogs";
 
@@ -24,6 +25,10 @@ export default function WorkerList() {
   const [deleteTarget, setDeleteTarget] = useState<Worker | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Login details state
+  const [loginTarget, setLoginTarget] = useState<Worker | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   // Install/reset log state
   const [logOpen, setLogOpen] = useState(false);
@@ -248,6 +253,7 @@ export default function WorkerList() {
           onDelete={handleDeleteClick}
           onOpenTerminal={openTerminal}
           onOpenLogs={openWorkerLogs}
+          onShowLogin={(w) => { setLoginTarget(w); setLoginOpen(true); }}
         />
       )}
 
@@ -269,6 +275,12 @@ export default function WorkerList() {
         }}
         onConfirm={handleDeleteConfirm}
         deleting={deleting}
+      />
+
+      <LoginDetailsDialog
+        open={loginOpen}
+        worker={loginTarget}
+        onClose={() => { setLoginOpen(false); setLoginTarget(null); }}
       />
 
       <LogDialog

@@ -43,6 +43,15 @@ class WorkerCreateResponse(WorkerResponse):
     api_key: str
 
 
+class WorkerCredentialsResponse(BaseModel):
+    ssh_host: str
+    ssh_user: str
+    ssh_port: int
+    ssh_password: str | None = None
+    ssh_key: str | None = None
+    api_key: str
+
+
 class BatchUpdateRequest(BaseModel):
     worker_ids: list[str]
 

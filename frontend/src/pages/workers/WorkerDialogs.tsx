@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Copy, Check, X } from "lucide-react";
 import api from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -312,6 +312,109 @@ export function WorkerLogDialog({ open, workerName, lines, onClose }: WorkerLogD
           )}
           <div ref={logEndRef} />
         </div>
+        <div className="mt-3 flex justify-end">
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Login Details Dialog ─── */
+
+interface WorkerCredentials {
+  ssh_host: string;
+  ssh_user: string;
+  ssh_port: number;
+  ssh_password: string | null;
+  ssh_key: string | null;
+  api_key: string;
+}
+
+interface LoginDetailsDialogProps {
+  open: boolean;
+  worker: Worker | null;
+  onClose: () => void;
+}
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-foreground-muted">{label}</Label>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 rounded-md border border-[var(--border)] bg-surface-tertiary px-3 py-1.5 text-xs font-mono text-foreground break-all">
+          {value}
+        </code>
+        <Button variant="ghost" size="icon" onClick={handleCopy} className="shrink-0 h-8 w-8">
+          {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function LoginDetailsDialog({ open, worker, onClose }: LoginDetailsDialogProps) {
+  const [creds, setCreds] = useState<WorkerCredentials | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open && worker) {
+      setLoading(true);
+      setCreds(null);
+      api
+        .get(`/workers/${worker.id}/credentials`)
+        .then((res) => setCreds(res.data))
+        .catch(() => setCreds(null))
+        .finally(() => setLoading(false));
+    }
+  }, [open, worker]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Login Details — {worker?.name}</DialogTitle>
+          <DialogDescription>SSH credentials and API key for this worker.</DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-foreground-muted text-sm">
+            Loading credentials...
+          </div>
+        ) : creds ? (
+          <div className="mt-2 space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <CopyField label="Host" value={creds.ssh_host} />
+              <CopyField label="User" value={creds.ssh_user} />
+              <CopyField label="Port" value={String(creds.ssh_port)} />
+            </div>
+            {creds.ssh_password && <CopyField label="Password" value={creds.ssh_password} />}
+            {creds.ssh_key && (
+              <div className="space-y-1">
+                <Label className="text-xs text-foreground-muted">SSH Key</Label>
+                <pre className="max-h-32 overflow-y-auto rounded-md border border-[var(--border)] bg-surface-tertiary px-3 py-2 text-[10px] font-mono text-foreground-secondary whitespace-pre-wrap break-all">
+                  {creds.ssh_key}
+                </pre>
+              </div>
+            )}
+            <CopyField label="API Key" value={creds.api_key} />
+            <CopyField
+              label="SSH Command"
+              value={`ssh ${creds.ssh_user}@${creds.ssh_host} -p ${creds.ssh_port}`}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-8 text-red-400 text-sm">
+            Failed to load credentials.
+          </div>
+        )}
         <div className="mt-3 flex justify-end">
           <Button onClick={onClose}>Close</Button>
         </div>
