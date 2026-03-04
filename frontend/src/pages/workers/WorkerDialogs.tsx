@@ -339,16 +339,21 @@ interface LoginDetailsDialogProps {
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   const handleCopy = () => {
+    const container = btnRef.current?.closest("[role='dialog']") || document.body;
     const ta = document.createElement("textarea");
     ta.value = value;
     ta.style.position = "fixed";
+    ta.style.left = "-9999px";
     ta.style.opacity = "0";
-    document.body.appendChild(ta);
+    ta.setAttribute("readonly", "");
+    container.appendChild(ta);
+    ta.focus();
     ta.select();
     document.execCommand("copy");
-    document.body.removeChild(ta);
+    container.removeChild(ta);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -360,7 +365,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         <code className="flex-1 rounded-md border border-[var(--border)] bg-surface-tertiary px-3 py-1.5 text-xs font-mono text-foreground break-all">
           {value}
         </code>
-        <Button variant="ghost" size="icon" onClick={handleCopy} className="shrink-0 h-8 w-8">
+        <Button ref={btnRef} variant="ghost" size="icon" onClick={handleCopy} className="shrink-0 h-8 w-8">
           {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
         </Button>
       </div>
