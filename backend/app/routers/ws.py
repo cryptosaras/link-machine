@@ -103,11 +103,13 @@ async def ws_terminal(
             async def ssh_to_ws():
                 """Read SSH stdout and send to WebSocket."""
                 try:
-                    async for data in process.stdout:
-                        if isinstance(data, bytes):
-                            await websocket.send_text(data.decode("utf-8", errors="replace"))
-                        else:
-                            await websocket.send_text(data)
+                    while not process.stdout.at_eof():
+                        data = await process.stdout.read(65536)
+                        if data:
+                            if isinstance(data, bytes):
+                                await websocket.send_text(data.decode("utf-8", errors="replace"))
+                            else:
+                                await websocket.send_text(data)
                 except (asyncssh.BreakReceived, asyncssh.SignalReceived):
                     pass
                 except Exception:
@@ -131,6 +133,7 @@ async def ws_terminal(
                             except json.JSONDecodeError:
                                 pass
                         process.stdin.write(data.encode("utf-8"))
+                        await process.stdin.drain()
                 except WebSocketDisconnect:
                     pass
                 except Exception:
