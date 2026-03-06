@@ -62,6 +62,13 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
+    // Let browser handle Ctrl+V/Ctrl+C natively (clipboard API unavailable on HTTP)
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === "keydown" && e.ctrlKey && e.key === "v") return false;
+      if (e.type === "keydown" && e.ctrlKey && e.key === "c" && term.hasSelection()) return false;
+      return true;
+    });
+
     // Right-click: copy selection to clipboard
     const fallbackCopy = (text: string) => {
       const ta = document.createElement("textarea");
@@ -92,16 +99,6 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
     };
     terminalRef.current.addEventListener("contextmenu", handleContextMenu);
 
-    // Ctrl+V: paste into terminal
-    const handlePaste = (e: ClipboardEvent) => {
-      const text = e.clipboardData?.getData("text");
-      if (text && ws.readyState === WebSocket.OPEN) {
-        e.preventDefault();
-        ws.send(text);
-      }
-    };
-    terminalRef.current.addEventListener("paste", handlePaste);
-
     const handleResize = () => {
       fitAddon.fit();
       const dims = fitAddon.proposeDimensions();
@@ -113,7 +110,6 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
 
     return () => {
       terminalRef.current?.removeEventListener("contextmenu", handleContextMenu);
-      terminalRef.current?.removeEventListener("paste", handlePaste);
       window.removeEventListener("resize", handleResize);
       ws.close();
       term.dispose();
