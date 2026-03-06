@@ -1,3 +1,4 @@
+import posixpath
 import stat
 from io import BytesIO
 from datetime import datetime, timezone
@@ -178,9 +179,19 @@ async def upload_file(
     worker = await _get_worker(db, worker_id)
     connect_kwargs = _build_ssh_kwargs(worker)
 
-    content = await file.read()
+    # Sanitize filename to prevent path traversal
+    safe_name = posixpath.basename(file.filename) if file.filename else ""
+    if not safe_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename")
+
+    # Limit upload size to 100 MB
+    max_size = 100 * 1024 * 1024
+    content = await file.read(max_size + 1)
+    if len(content) > max_size:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 100 MB)")
+
     target_dir = path.rstrip("/")
-    remote_path = f"{target_dir}/{file.filename}"
+    remote_path = f"{target_dir}/{safe_name}"
 
     try:
         async with asyncssh.connect(**connect_kwargs) as conn:
