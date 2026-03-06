@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir \
     "redis>=5.2.0" \
     "httpx>=0.28.0" \
     "asyncssh>=2.17.0" \
-    "cryptography>=43.0.0"
+    "cryptography>=43.0.0" \
+    "python-multipart>=0.0.9"
 
 COPY . .
 
