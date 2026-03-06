@@ -63,22 +63,54 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
     });
 
     // Right-click: copy selection or paste from clipboard (CMD-style)
+    const fallbackCopy = (text: string) => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.opacity = "0";
+      ta.setAttribute("readonly", "");
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    };
+
+    const fallbackPaste = (cb: (text: string) => void) => {
+      const ta = document.createElement("textarea");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      document.execCommand("paste");
+      const text = ta.value;
+      document.body.removeChild(ta);
+      if (text) cb(text);
+    };
+
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const selection = term.getSelection();
       if (selection) {
-        // Has selection → copy it
-        navigator.clipboard.writeText(selection).then(() => {
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(selection).then(() => term.clearSelection());
+        } else {
+          fallbackCopy(selection);
           term.clearSelection();
-        });
+        }
       } else {
-        // No selection → paste from clipboard
-        navigator.clipboard.readText().then((text) => {
-          if (text && ws.readyState === WebSocket.OPEN) {
-            ws.send(text);
-          }
-        });
+        if (navigator.clipboard?.readText) {
+          navigator.clipboard.readText().then((text) => {
+            if (text && ws.readyState === WebSocket.OPEN) ws.send(text);
+          });
+        } else {
+          fallbackPaste((text) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(text);
+          });
+        }
       }
     };
     terminalRef.current.addEventListener("contextmenu", handleContextMenu);
