@@ -78,8 +78,8 @@ export default function FileContextMenu({
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      /* silent */
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Download failed");
     }
     onClose();
   }, [workerId, node, onClose]);
@@ -99,8 +99,8 @@ export default function FileContextMenu({
         await api.post(`/workers/${workerId}/files/upload`, form, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-      } catch {
-        /* silent */
+      } catch (err: any) {
+        alert(err?.response?.data?.detail || "Upload failed");
       }
       done();
     },
@@ -117,8 +117,8 @@ export default function FileContextMenu({
       const newPath = parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
       try {
         await api.post(`/workers/${workerId}/files/mkdir`, { path: newPath });
-      } catch {
-        /* silent */
+      } catch (err: any) {
+        alert(err?.response?.data?.detail || "Create folder failed");
       }
       done();
     },
@@ -138,8 +138,8 @@ export default function FileContextMenu({
           old_path: node.path,
           new_path: newPath,
         });
-      } catch {
-        /* silent */
+      } catch (err: any) {
+        alert(err?.response?.data?.detail || "Rename failed");
       }
       done();
     },
@@ -154,8 +154,8 @@ export default function FileContextMenu({
     }
     try {
       await api.post(`/workers/${workerId}/files/delete`, { path: node.path });
-    } catch {
-      /* silent */
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Delete failed");
     }
     done();
   }, [workerId, node, done]);

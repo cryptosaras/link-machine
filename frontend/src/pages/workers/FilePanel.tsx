@@ -19,9 +19,9 @@ import FileContextMenu from "./FileContextMenu";
 export interface FileEntry {
   name: string;
   is_dir: boolean;
-  size: number;
-  modified: string;
-  permissions: string;
+  size: number | null;
+  modified: string | null;
+  permissions: string | null;
 }
 
 export interface TreeNode {
@@ -65,10 +65,12 @@ function fileIconColor(name: string): string {
   }
 }
 
-function formatSize(bytes: number): string {
+function formatSize(bytes: number | null): string {
+  if (bytes === null) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} K`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} M`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} M`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} G`;
 }
 
 /** Recursively update a node found by path */
@@ -182,6 +184,7 @@ export default function FilePanel({ workerId }: FilePanelProps) {
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, node: TreeNode) => {
       e.preventDefault();
+      e.stopPropagation();
       setContextMenu({ x: e.clientX, y: e.clientY, node });
     },
     []
