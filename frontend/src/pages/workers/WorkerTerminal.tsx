@@ -27,6 +27,7 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+      rightClickSelectsWord: true,
       theme: {
         background: "#0d0d0d",
         foreground: "#d4d4d8",
@@ -61,6 +62,27 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
+    // Right-click: copy selection or paste from clipboard (CMD-style)
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selection = term.getSelection();
+      if (selection) {
+        // Has selection → copy it
+        navigator.clipboard.writeText(selection).then(() => {
+          term.clearSelection();
+        });
+      } else {
+        // No selection → paste from clipboard
+        navigator.clipboard.readText().then((text) => {
+          if (text && ws.readyState === WebSocket.OPEN) {
+            ws.send(text);
+          }
+        });
+      }
+    };
+    terminalRef.current.addEventListener("contextmenu", handleContextMenu);
+
     const handleResize = () => {
       fitAddon.fit();
       const dims = fitAddon.proposeDimensions();
@@ -71,6 +93,7 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
     window.addEventListener("resize", handleResize);
 
     return () => {
+      terminalRef.current?.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("resize", handleResize);
       ws.close();
       term.dispose();
