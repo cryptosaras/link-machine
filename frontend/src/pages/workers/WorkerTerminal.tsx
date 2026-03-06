@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
-import { Terminal as TerminalIcon, X } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Terminal as TerminalIcon, X, FolderTree } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "@/components/ui/button";
+import FilePanel from "./FilePanel";
 
 interface WorkerTerminalProps {
   workerId: string;
@@ -13,7 +14,12 @@ interface WorkerTerminalProps {
 
 export default function WorkerTerminal({ workerId, workerName, onClose }: WorkerTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [splitPercent, setSplitPercent] = useState(33);
+  const isDragging = useRef(false);
 
+  /* ---- Terminal setup (unchanged logic) ---- */
   useEffect(() => {
     if (!terminalRef.current) return;
 
@@ -30,6 +36,7 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       },
     });
     const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
     setTimeout(() => fitAddon.fit(), 50);
@@ -67,16 +74,58 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       window.removeEventListener("resize", handleResize);
       ws.close();
       term.dispose();
+      fitAddonRef.current = null;
     };
   }, [workerId]);
+
+  /* ---- Re-fit terminal when split changes ---- */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fitAddonRef.current?.fit();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [splitPercent]);
+
+  /* ---- Divider drag logic ---- */
+  const handleDividerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isDragging.current = true;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!isDragging.current || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+        const clamped = Math.max(15, Math.min(60, pct));
+        setSplitPercent(clamped);
+      };
+
+      const onMouseUp = () => {
+        isDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        // re-fit after drag ends
+        setTimeout(() => fitAddonRef.current?.fit(), 30);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    []
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative flex h-full w-[70%] min-w-[500px] flex-col border-l-2 border-emerald-500/50 shadow-2xl"
+        className="relative flex h-full w-[85%] min-w-[700px] flex-col border-l-2 border-emerald-500/50 shadow-2xl"
         style={{ backgroundColor: "#111118" }}
       >
+        {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3"
           style={{
@@ -91,14 +140,40 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
               <span className="inline-block h-3 w-3 rounded-full bg-green-500/80" />
             </div>
             <div className="mx-2 h-4 w-px bg-gray-700" />
-            <TerminalIcon className="h-4 w-4 text-emerald-400" />
+            <FolderTree className="h-4 w-4 text-emerald-400" />
+            <span className="text-sm text-emerald-50/60">Files</span>
+            <TerminalIcon className="ml-2 h-4 w-4 text-emerald-400" />
             <span className="text-sm font-medium text-emerald-50">{workerName}</span>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div ref={terminalRef} className="flex-1 p-1" style={{ backgroundColor: "#0d0d0d" }} />
+
+        {/* Split content area */}
+        <div ref={containerRef} className="flex flex-1 overflow-hidden">
+          {/* Left: File panel */}
+          <div
+            className="h-full overflow-hidden"
+            style={{ width: `${splitPercent}%` }}
+          >
+            <FilePanel workerId={workerId} />
+          </div>
+
+          {/* Divider */}
+          <div
+            className="w-1 shrink-0 cursor-col-resize bg-gray-700 transition-colors hover:bg-emerald-500/50"
+            onMouseDown={handleDividerMouseDown}
+          />
+
+          {/* Right: Terminal */}
+          <div
+            className="h-full flex-1 overflow-hidden p-1"
+            style={{ backgroundColor: "#0d0d0d" }}
+          >
+            <div ref={terminalRef} className="h-full w-full" />
+          </div>
+        </div>
       </div>
     </div>
   );
