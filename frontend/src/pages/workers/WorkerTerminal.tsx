@@ -62,7 +62,7 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
-    // Right-click: copy selection or paste from clipboard (CMD-style)
+    // Right-click: copy selection to clipboard
     const fallbackCopy = (text: string) => {
       const ta = document.createElement("textarea");
       ta.value = text;
@@ -77,19 +77,6 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
       document.body.removeChild(ta);
     };
 
-    const fallbackPaste = (cb: (text: string) => void) => {
-      const ta = document.createElement("textarea");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.focus();
-      document.execCommand("paste");
-      const text = ta.value;
-      document.body.removeChild(ta);
-      if (text) cb(text);
-    };
-
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -101,19 +88,19 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
           fallbackCopy(selection);
           term.clearSelection();
         }
-      } else {
-        if (navigator.clipboard?.readText) {
-          navigator.clipboard.readText().then((text) => {
-            if (text && ws.readyState === WebSocket.OPEN) ws.send(text);
-          });
-        } else {
-          fallbackPaste((text) => {
-            if (ws.readyState === WebSocket.OPEN) ws.send(text);
-          });
-        }
       }
     };
     terminalRef.current.addEventListener("contextmenu", handleContextMenu);
+
+    // Ctrl+V: paste into terminal
+    const handlePaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text");
+      if (text && ws.readyState === WebSocket.OPEN) {
+        e.preventDefault();
+        ws.send(text);
+      }
+    };
+    terminalRef.current.addEventListener("paste", handlePaste);
 
     const handleResize = () => {
       fitAddon.fit();
@@ -126,6 +113,7 @@ export default function WorkerTerminal({ workerId, workerName, onClose }: Worker
 
     return () => {
       terminalRef.current?.removeEventListener("contextmenu", handleContextMenu);
+      terminalRef.current?.removeEventListener("paste", handlePaste);
       window.removeEventListener("resize", handleResize);
       ws.close();
       term.dispose();
