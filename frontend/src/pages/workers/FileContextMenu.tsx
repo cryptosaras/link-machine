@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Download, FolderPlus, Pencil, Trash2, Upload } from "lucide-react";
 import api from "@/api/client";
-import type { TreeNode } from "./FilePanel";
+import type { TreeNode, TransferState } from "./FilePanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -14,6 +14,7 @@ interface FileContextMenuProps {
   workerId: string;
   onClose: () => void;
   onRefresh: () => void;
+  onTransfer: (t: TransferState) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -27,6 +28,7 @@ export default function FileContextMenu({
   workerId,
   onClose,
   onRefresh,
+  onTransfer,
 }: FileContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,24 +67,35 @@ export default function FileContextMenu({
   }, [onRefresh, onClose]);
 
   const handleDownload = useCallback(async () => {
+    const fileName = node.entry.name;
+    onClose();
+    onTransfer({ type: "download", fileName, progress: 0, status: "active" });
     try {
       const res = await api.get(`/workers/${workerId}/files/download`, {
         params: { path: node.path },
         responseType: "blob",
+        onDownloadProgress: (e) => {
+          if (e.total) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            onTransfer({ type: "download", fileName, progress: pct, status: "active" });
+          } else {
+            onTransfer({ type: "download", fileName, progress: 50, status: "active" });
+          }
+        },
       });
       const url = window.URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = node.entry.name;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      onTransfer({ type: "download", fileName, progress: 100, status: "done" });
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Download failed");
+      onTransfer({ type: "download", fileName, progress: 0, status: "error", error: err?.response?.data?.detail || "Download failed" });
     }
-    onClose();
-  }, [workerId, node, onClose]);
+  }, [workerId, node, onClose, onTransfer]);
 
   const handleUpload = useCallback(() => {
     fileInputRef.current?.click();
@@ -92,19 +105,29 @@ export default function FileContextMenu({
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      const fileName = file.name;
+      onClose();
+      onTransfer({ type: "upload", fileName, progress: 0, status: "active" });
       const form = new FormData();
       form.append("file", file);
       form.append("path", node.path);
       try {
         await api.post(`/workers/${workerId}/files/upload`, form, {
           headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (e) => {
+            if (e.total) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              onTransfer({ type: "upload", fileName, progress: pct, status: "active" });
+            }
+          },
         });
+        onTransfer({ type: "upload", fileName, progress: 100, status: "done" });
+        onRefresh();
       } catch (err: any) {
-        alert(err?.response?.data?.detail || "Upload failed");
+        onTransfer({ type: "upload", fileName, progress: 0, status: "error", error: err?.response?.data?.detail || "Upload failed" });
       }
-      done();
     },
-    [workerId, node, done]
+    [workerId, node, onClose, onRefresh, onTransfer]
   );
 
   const handleMkdir = useCallback(

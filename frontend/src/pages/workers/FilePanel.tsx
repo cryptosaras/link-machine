@@ -8,6 +8,10 @@ import {
   RefreshCw,
   Home,
   Loader2,
+  Upload,
+  Download,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import api from "@/api/client";
 import FileContextMenu from "./FileContextMenu";
@@ -94,6 +98,14 @@ interface FilePanelProps {
   workerId: string;
 }
 
+export interface TransferState {
+  type: "upload" | "download";
+  fileName: string;
+  progress: number; // 0-100
+  status: "active" | "done" | "error";
+  error?: string;
+}
+
 export default function FilePanel({ workerId }: FilePanelProps) {
   const [rootEntries, setRootEntries] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +114,7 @@ export default function FilePanel({ workerId }: FilePanelProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: TreeNode } | null>(
     null
   );
+  const [transfer, setTransfer] = useState<TransferState | null>(null);
 
   const fetchDir = useCallback(
     async (path: string): Promise<TreeNode[]> => {
@@ -195,6 +208,18 @@ export default function FilePanel({ workerId }: FilePanelProps) {
     setRootEntries([]);
     loadRoot(rootPath);
   }, [loadRoot, rootPath]);
+
+  // Auto-dismiss completed/error transfers after 3s
+  useEffect(() => {
+    if (transfer && (transfer.status === "done" || transfer.status === "error")) {
+      const timer = setTimeout(() => setTransfer(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [transfer]);
+
+  const handleTransfer = useCallback((t: TransferState) => {
+    setTransfer(t);
+  }, []);
 
   /* ---- Row renderer ---- */
 
@@ -308,6 +333,51 @@ export default function FilePanel({ workerId }: FilePanelProps) {
         {!loading && !error && rootEntries.map((node) => renderRow(node, 0))}
       </div>
 
+      {/* Transfer status bar */}
+      {transfer && (
+        <div className="border-t border-gray-700/50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            {transfer.status === "active" ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-400" />
+            ) : transfer.status === "done" ? (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between">
+                <span className="truncate text-[10px] text-gray-300">
+                  {transfer.type === "upload" ? (
+                    <Upload className="mr-1 inline h-3 w-3" />
+                  ) : (
+                    <Download className="mr-1 inline h-3 w-3" />
+                  )}
+                  {transfer.fileName}
+                </span>
+                <span className="ml-2 shrink-0 text-[10px] text-gray-500">
+                  {transfer.status === "active"
+                    ? `${transfer.progress}%`
+                    : transfer.status === "done"
+                      ? "Done"
+                      : "Failed"}
+                </span>
+              </div>
+              {transfer.status === "active" && (
+                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                    style={{ width: `${transfer.progress}%` }}
+                  />
+                </div>
+              )}
+              {transfer.status === "error" && transfer.error && (
+                <div className="mt-0.5 truncate text-[10px] text-red-400">{transfer.error}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Context menu */}
       {contextMenu && (
         <FileContextMenu
@@ -317,6 +387,7 @@ export default function FilePanel({ workerId }: FilePanelProps) {
           workerId={workerId}
           onClose={() => setContextMenu(null)}
           onRefresh={handleRefresh}
+          onTransfer={handleTransfer}
         />
       )}
     </div>
